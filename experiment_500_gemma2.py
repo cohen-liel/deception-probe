@@ -29,7 +29,13 @@ Expected runtime on A100: ~40 minutes
 
 import subprocess
 subprocess.run(["pip", "install", "-q", "transformers==4.44.0", "accelerate", "torch",
-                "scikit-learn", "scipy"], check=True)
+                "scikit-learn", "scipy", "huggingface_hub"], check=True)
+
+# Authenticate with HuggingFace for gated models (Gemma-2)
+from huggingface_hub import login
+HF_TOKEN = "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"
+login(token=HF_TOKEN)
+print("HuggingFace authentication successful")
 
 import torch
 import numpy as np
@@ -1516,7 +1522,7 @@ monitor_resources("BEFORE MODEL DOWNLOAD")
 
 print(f"Loading in float16 (9B fits easily on A100 80GB)")
 
-tokenizer = AutoTokenizer.from_pretrained(MODEL_NAME)
+tokenizer = AutoTokenizer.from_pretrained(MODEL_NAME, token=HF_TOKEN)
 if tokenizer.pad_token is None:
     tokenizer.pad_token = tokenizer.eos_token
 print(f"  Tokenizer loaded ✓")
@@ -1527,6 +1533,7 @@ model = AutoModelForCausalLM.from_pretrained(
     output_hidden_states=True,
     device_map="auto",
     low_cpu_mem_usage=True,
+    token=HF_TOKEN,
 )
 model.eval()
 print(f"  Model loaded ✓")
@@ -2255,6 +2262,23 @@ final_results = {
 
 with open(SAVE_DIR / f"results_{model_short_name}.json", "w") as f:
     json.dump(final_results, f, indent=2)
+
+# Save probe weights for reproducibility and analysis
+probe_data = {
+    "model": MODEL_NAME,
+    "target_layer": TARGET_LAYER,
+    "probe_coef": probe.coef_.tolist(),
+    "probe_intercept": probe.intercept_.tolist(),
+    "scaler_mean": scaler.mean_.tolist(),
+    "scaler_scale": scaler.scale_.tolist(),
+    "truncated_probe_coef": probe_trunc.coef_.tolist(),
+    "truncated_probe_intercept": probe_trunc.intercept_.tolist(),
+    "residualized_probe_coef": probe_resid.coef_.tolist(),
+    "residualized_probe_intercept": probe_resid.intercept_.tolist(),
+}
+with open(SAVE_DIR / f"probe_weights_{model_short_name}.json", "w") as f:
+    json.dump(probe_data, f)
+print(f"Probe weights saved to {SAVE_DIR / f'probe_weights_{model_short_name}.json'}")
 
 # ============================================================
 # FINAL SUMMARY — 4-MODEL CROSS-ARCHITECTURE COMPARISON
