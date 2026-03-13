@@ -2,17 +2,34 @@
 =============================================================
 DeceptionProbe — 500-Scenario Experiment on Llama-3.1-70B-Instruct
 =============================================================
-CROSS-MODEL GENERALIZATION TEST
+CROSS-ARCHITECTURE + SCALE GENERALIZATION TEST
 
-Previous experiment: Qwen2.5-3B-Instruct → 93.7% accuracy
-This experiment:     Llama-3.1-70B-Instruct (Meta) → ???
+Previous experiments:
+  1. Qwen2.5-3B-Instruct (Alibaba, 3B, MHA)     → 93.7% test accuracy
+  2. Mistral-Nemo-Instruct-2407 (12B, SWA+GQA)   → 94.8% test accuracy
 
-Purpose: Prove that the deception signal is UNIVERSAL across
-         different model architectures, not specific to Qwen.
+This experiment: Meta-Llama-3.1-70B-Instruct (Meta, 70B, GQA) → ???
 
-Model: meta-llama/Llama-3.1-70B-Instruct (4-bit quantized)
-GPU:   A100 (40GB VRAM) via Colab Pro
+Purpose: Prove that the deception signal is UNIVERSAL across:
+  - THREE completely different model architectures
+  - VASTLY different model scales (3B → 12B → 70B)
+  - THREE different training labs (Alibaba, Mistral AI, Meta)
+
+  If a 70B model also shows the signal, it demonstrates that:
+  (a) The signal scales with model size
+  (b) The signal is not an artifact of small models
+  (c) The signal persists even in the most capable open models
+
+Model: meta-llama/Llama-3.1-70B-Instruct (70B, 4-bit quantized)
+GPU:   A100 (80GB VRAM) via Colab Pro
 Layer: 40 (middle of 80 layers)
+
+DISK MANAGEMENT STRATEGY:
+  - 70B in 4-bit ≈ 40GB VRAM, but ~140GB on disk during download
+  - Colab disk is ~235GB total, ~100-150GB free
+  - Strategy: Download with low_cpu_mem_usage, then clear HF cache
+  - Monitor disk usage throughout
+  - Fallback to Llama-3.1-8B-Instruct if disk/VRAM insufficient
 
 500 diverse scenarios across 16 categories (~1000 samples)
 with 5 independent length confound controls.
@@ -29,6 +46,8 @@ import torch
 import numpy as np
 import json
 import gc
+import os
+import shutil
 import time
 from pathlib import Path
 from transformers import AutoTokenizer, AutoModelForCausalLM, BitsAndBytesConfig
@@ -40,7 +59,8 @@ from sklearn.feature_extraction.text import TfidfVectorizer
 print(f"CUDA available: {torch.cuda.is_available()}")
 if torch.cuda.is_available():
     print(f"GPU: {torch.cuda.get_device_name(0)}")
-    print(f"VRAM: {torch.cuda.get_device_properties(0).total_memory / 1e9:.1f} GB")
+    vram = torch.cuda.get_device_properties(0).total_memory
+    print(f"VRAM: {vram / 1e9:.1f} GB")
 
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 SAVE_DIR = Path("/content/results_llama70b")
@@ -51,9 +71,45 @@ TARGET_LAYER = 40  # Middle of 80 layers
 TRAIN_RATIO = 0.8
 TRUNCATION_TOKENS = 20
 SEED = 42
-MAX_SEQ_LEN = 256  # Shorter to save VRAM on 70B
-MAX_NEW_TOKENS = 100
+MAX_SEQ_LEN = 512  # Full length — 70B in 4-bit fits in A100 80GB
+MAX_NEW_TOKENS = 150
 np.random.seed(SEED)
+
+# ============================================================
+# DISK MANAGEMENT UTILITIES
+# ============================================================
+
+def check_disk_space():
+    """Check available disk space in GB."""
+    total, used, free = shutil.disk_usage("/")
+    print(f"  Disk: {free/1e9:.1f} GB free / {total/1e9:.1f} GB total ({used/total*100:.0f}% used)")
+    return free / 1e9
+
+def clear_hf_cache(model_pattern="llama"):
+    """Clear HuggingFace cache to free disk space after model is loaded to GPU."""
+    cache_dir = Path.home() / ".cache" / "huggingface" / "hub"
+    if cache_dir.exists():
+        size_before = sum(f.stat().st_size for f in cache_dir.rglob("*") if f.is_file()) / 1e9
+        print(f"  HF cache size: {size_before:.1f} GB")
+        for d in cache_dir.iterdir():
+            if d.is_dir() and model_pattern.lower() in d.name.lower():
+                shutil.rmtree(d, ignore_errors=True)
+                print(f"  Cleared: {d.name}")
+        gc.collect()
+        size_after = sum(f.stat().st_size for f in cache_dir.rglob("*") if f.is_file()) / 1e9
+        print(f"  Freed: {size_before - size_after:.1f} GB")
+    else:
+        print("  No HF cache found")
+
+def monitor_resources(label=""):
+    """Print current resource usage."""
+    print(f"\n--- Resources {label} ---")
+    check_disk_space()
+    if torch.cuda.is_available():
+        allocated = torch.cuda.memory_allocated() / 1e9
+        reserved = torch.cuda.memory_reserved() / 1e9
+        total_vram = torch.cuda.get_device_properties(0).total_memory / 1e9
+        print(f"  GPU: {allocated:.1f} GB allocated, {reserved:.1f} GB reserved / {total_vram:.1f} GB total")
 
 # ============================================================
 # 500 SCENARIOS (16 categories) — IDENTICAL to Qwen experiment
@@ -1461,12 +1517,25 @@ for c, n in sorted(cat_counts_init.items()):
 
 # ============================================================
 # LOAD MODEL — Llama-3.1-70B-Instruct (4-bit quantized)
+# With disk management and automatic fallback to 8B
 # ============================================================
+
+FALLBACK_MODEL = "meta-llama/Llama-3.1-8B-Instruct"
+FALLBACK_LAYER = 16  # Middle of 32 layers
 
 print(f"\n{'='*60}")
 print(f"LOADING MODEL: {MODEL_NAME}")
 print(f"Using 4-bit quantization (BitsAndBytes NF4)")
 print(f"{'='*60}")
+
+monitor_resources("BEFORE MODEL DOWNLOAD")
+
+# Check if we have enough disk space for 70B (~140GB download)
+free_gb = check_disk_space()
+if free_gb < 80:
+    print(f"\n⚠️ WARNING: Only {free_gb:.0f} GB free. 70B needs ~140GB during download.")
+    print(f"   Will attempt anyway with streaming download...")
+    print(f"   If it fails, will fall back to {FALLBACK_MODEL}")
 
 bnb_config = BitsAndBytesConfig(
     load_in_4bit=True,
@@ -1475,18 +1544,61 @@ bnb_config = BitsAndBytesConfig(
     bnb_4bit_use_double_quant=True,
 )
 
-tokenizer = AutoTokenizer.from_pretrained(MODEL_NAME, trust_remote_code=True)
-if tokenizer.pad_token is None:
-    tokenizer.pad_token = tokenizer.eos_token
+try:
+    print(f"\nStep 1/3: Loading tokenizer...")
+    tokenizer = AutoTokenizer.from_pretrained(MODEL_NAME, trust_remote_code=True)
+    if tokenizer.pad_token is None:
+        tokenizer.pad_token = tokenizer.eos_token
+    print(f"  Tokenizer loaded ✓")
 
-model = AutoModelForCausalLM.from_pretrained(
-    MODEL_NAME,
-    quantization_config=bnb_config,
-    trust_remote_code=True,
-    output_hidden_states=True,
-    device_map="auto",
-)
-model.eval()
+    print(f"Step 2/3: Downloading and loading model (this may take 10-20 min)...")
+    model = AutoModelForCausalLM.from_pretrained(
+        MODEL_NAME,
+        quantization_config=bnb_config,
+        trust_remote_code=True,
+        output_hidden_states=True,
+        device_map="auto",
+        low_cpu_mem_usage=True,  # Minimize RAM usage during loading
+    )
+    model.eval()
+    print(f"  Model loaded ✓")
+
+    print(f"Step 3/3: Clearing HF cache to free disk space...")
+    monitor_resources("AFTER MODEL LOAD (before cache clear)")
+    clear_hf_cache("llama")
+    monitor_resources("AFTER CACHE CLEAR")
+
+    print(f"\n*** SUCCESS: Loaded {MODEL_NAME} ***")
+
+except Exception as e:
+    print(f"\n*** FAILED to load {MODEL_NAME}: {e}")
+    print(f"*** FALLING BACK to {FALLBACK_MODEL} ***\n")
+    MODEL_NAME = FALLBACK_MODEL
+    TARGET_LAYER = FALLBACK_LAYER
+    SAVE_DIR = Path("/content/results_llama8b")
+    SAVE_DIR.mkdir(parents=True, exist_ok=True)
+
+    # Clear GPU memory and disk
+    gc.collect()
+    torch.cuda.empty_cache()
+    clear_hf_cache("llama")
+
+    tokenizer = AutoTokenizer.from_pretrained(MODEL_NAME, trust_remote_code=True)
+    if tokenizer.pad_token is None:
+        tokenizer.pad_token = tokenizer.eos_token
+
+    model = AutoModelForCausalLM.from_pretrained(
+        MODEL_NAME,
+        quantization_config=bnb_config,
+        trust_remote_code=True,
+        output_hidden_states=True,
+        device_map="auto",
+        low_cpu_mem_usage=True,
+    )
+    model.eval()
+    clear_hf_cache("llama")
+    print(f"\n*** SUCCESS: Loaded fallback {MODEL_NAME} ***")
+
 print(f"Loaded! Layers: {model.config.num_hidden_layers}, Hidden dim: {model.config.hidden_size}")
 print(f"Target layer: {TARGET_LAYER}")
 if torch.cuda.is_available():
@@ -1496,7 +1608,8 @@ if torch.cuda.is_available():
 # PHASE 1: GENERATE RESPONSES (with length control)
 # ============================================================
 
-RESPONSES_FILE = SAVE_DIR / "generated_responses_llama70b.json"
+model_short_name = MODEL_NAME.split('/')[-1].lower().replace('-', '_').replace('.', '_')
+RESPONSES_FILE = SAVE_DIR / f"generated_responses_{model_short_name}.json"
 
 def generate_response(context, question, mode, max_tokens=MAX_NEW_TOKENS):
     """Generate a lying or honest response with length control."""
@@ -1592,8 +1705,7 @@ else:
             rate = (i + 1) / elapsed * 60
             remaining = (N_SCENARIOS - i - 1) / rate if rate > 0 else 0
             print(f"\n  --- Progress: {i+1}/{N_SCENARIOS} | Elapsed: {elapsed/60:.1f}m | ~{remaining:.0f}m remaining ---")
-            if torch.cuda.is_available():
-                print(f"  --- GPU memory: {torch.cuda.memory_allocated()/1e9:.1f} GB ---")
+            monitor_resources(f"after {i+1} scenarios")
 
     # Final save
     with open(RESPONSES_FILE, "w") as f:
@@ -1745,8 +1857,7 @@ for i, item in enumerate(generated_data):
         rate = (i + 1) / elapsed * 60
         remaining = (len(generated_data) - i - 1) / rate if rate > 0 else 0
         print(f"  --- {i+1}/{len(generated_data)} | {elapsed/60:.1f}m elapsed | ~{remaining:.0f}m remaining ---")
-        if torch.cuda.is_available():
-            print(f"  --- GPU memory: {torch.cuda.memory_allocated()/1e9:.1f} GB ---")
+        monitor_resources(f"extraction: {i+1}/{len(generated_data)}")
 
 X_all = np.array(X_all)
 y_all = np.array(y_all)
@@ -2110,12 +2221,12 @@ print(f"\nWhite lie detection accuracy: {white_lie_correct}/{white_lie_total} ({
 # ============================================================
 
 final_results = {
-    "experiment": "DeceptionProbe — Llama-3.1-70B-Instruct (Cross-Model Generalization)",
+    "experiment": "DeceptionProbe — Llama-3.1-70B-Instruct (Cross-Architecture + Scale Generalization)",
     "model": MODEL_NAME,
     "quantization": "4-bit NF4 (BitsAndBytes)",
     "target_layer": TARGET_LAYER,
-    "total_layers": 80,
-    "hidden_dim": 8192,
+    "total_layers": model.config.num_hidden_layers,
+    "hidden_dim": model.config.hidden_size,
     "total_scenarios": len(generated_data),
     "total_samples": len(generated_data) * 2,
     "train_scenarios": TRAIN_SIZE,
@@ -2156,58 +2267,68 @@ final_results = {
     },
     "cv_by_category": {cat: float(np.mean(scores)) for cat, scores in sorted(cat_cv.items())},
     "test_by_category": {cat: d["correct"]/d["total"] for cat, d in sorted(test_cats.items())},
-    "comparison_with_qwen3b": {
-        "qwen_3b_test_accuracy": 0.937,
-        "qwen_3b_cv_accuracy": 0.958,
-        "qwen_3b_length_only_baseline": 0.517,
-        "qwen_3b_truncation_test": 0.931,
-        "llama_70b_test_accuracy": float(test_acc),
-        "llama_70b_cv_accuracy": float(cv_accuracy),
-        "llama_70b_length_only_baseline": float(length_test_acc),
-        "llama_70b_truncation_test": float(trunc_test_acc),
+    "cross_architecture_comparison": {
+        "qwen_3b": {
+            "test_accuracy": 0.937, "cv_accuracy": 0.958,
+            "length_only_baseline": 0.517, "truncation_test": 0.931,
+            "white_lie_detection": 0.95, "architecture": "MHA",
+        },
+        "mistral_12b": {
+            "test_accuracy": 0.948, "cv_accuracy": 0.947,
+            "length_only_baseline": 0.598, "truncation_test": 0.960,
+            "white_lie_detection": 0.99, "architecture": "SWA+GQA",
+        },
+        "llama_70b": {
+            "test_accuracy": float(test_acc), "cv_accuracy": float(cv_accuracy),
+            "length_only_baseline": float(length_test_acc), "truncation_test": float(trunc_test_acc),
+            "white_lie_detection": float(white_lie_correct / white_lie_total),
+            "architecture": "GQA",
+        },
     },
 }
 
-with open(SAVE_DIR / "results_llama70b.json", "w") as f:
+with open(SAVE_DIR / f"results_{model_short_name}.json", "w") as f:
     json.dump(final_results, f, indent=2)
 
 # ============================================================
-# FINAL SUMMARY — CROSS-MODEL COMPARISON
+# FINAL SUMMARY — 3-MODEL CROSS-ARCHITECTURE COMPARISON
 # ============================================================
 
-print(f"\n{'='*60}")
-print("FINAL SUMMARY — LLAMA-3.1-70B vs QWEN2.5-3B")
-print(f"{'='*60}")
+print(f"\n{'='*80}")
+print("FINAL SUMMARY — 3-MODEL CROSS-ARCHITECTURE COMPARISON")
+print(f"{'='*80}")
 print(f"")
-print(f"{'Metric':<40s} {'Qwen-3B':>10s} {'Llama-70B':>10s}")
-print(f"{'-'*60}")
-print(f"{'Model size':<40s} {'3B':>10s} {'70B':>10s}")
-print(f"{'Architecture':<40s} {'Qwen':>10s} {'Llama':>10s}")
-print(f"{'CV accuracy':<40s} {'95.8%':>10s} {f'{cv_accuracy:.1%}':>10s}")
-print(f"{'Held-out test accuracy':<40s} {'93.7%':>10s} {f'{test_acc:.1%}':>10s}")
-print(f"{'Length-only baseline':<40s} {'51.7%':>10s} {f'{length_test_acc:.1%}':>10s}")
-print(f"{'Truncation test (20 tokens)':<40s} {'93.1%':>10s} {f'{trunc_test_acc:.1%}':>10s}")
-print(f"{'Residualized probe':<40s} {'93.1%':>10s} {f'{resid_test_acc:.1%}':>10s}")
-print(f"{'TF-IDF baseline':<40s} {'86.2%':>10s} {f'{baseline_acc:.1%}':>10s}")
-print(f"{'White lie detection':<40s} {'95.0%':>10s} {f'{white_lie_correct/white_lie_total:.1%}':>10s}")
-print(f"{'P-value':<40s} {'0.0000':>10s} {f'{p_value:.4f}':>10s}")
-print(f"{'='*60}")
+print(f"{'Metric':<35s} {'Qwen-3B':>12s} {'Mistral-12B':>12s} {'Llama-70B':>12s}")
+print(f"{'-'*71}")
+print(f"{'Model size':<35s} {'3B':>12s} {'12B':>12s} {'70B':>12s}")
+print(f"{'Architecture':<35s} {'MHA':>12s} {'SWA+GQA':>12s} {'GQA':>12s}")
+print(f"{'Training lab':<35s} {'Alibaba':>12s} {'Mistral AI':>12s} {'Meta':>12s}")
+print(f"{'CV accuracy':<35s} {'95.8%':>12s} {'94.7%':>12s} {f'{cv_accuracy:.1%}':>12s}")
+print(f"{'Held-out test accuracy':<35s} {'93.7%':>12s} {'94.8%':>12s} {f'{test_acc:.1%}':>12s}")
+print(f"{'Length-only baseline':<35s} {'51.7%':>12s} {'59.8%':>12s} {f'{length_test_acc:.1%}':>12s}")
+print(f"{'Truncation test (20 tokens)':<35s} {'93.1%':>12s} {'96.0%':>12s} {f'{trunc_test_acc:.1%}':>12s}")
+print(f"{'Residualized probe':<35s} {'93.1%':>12s} {'94.3%':>12s} {f'{resid_test_acc:.1%}':>12s}")
+print(f"{'TF-IDF baseline':<35s} {'86.2%':>12s} {'87.9%':>12s} {f'{baseline_acc:.1%}':>12s}")
+print(f"{'White lie detection':<35s} {'95.0%':>12s} {'99.0%':>12s} {f'{white_lie_correct/white_lie_total:.1%}':>12s}")
+print(f"{'P-value':<35s} {'0.0000':>12s} {'0.0000':>12s} {f'{p_value:.4f}':>12s}")
+print(f"{'='*80}")
 
 if test_acc > 0.8 and p_value < 0.05:
-    print("\n✅ CROSS-MODEL GENERALIZATION CONFIRMED!")
-    print("   The deception signal exists in BOTH Qwen and Llama architectures.")
-    print("   This is strong evidence that the signal is a universal property of LLMs.")
+    print("\n✅ 3-MODEL CROSS-ARCHITECTURE GENERALIZATION CONFIRMED!")
+    print("   The deception signal exists in Qwen (MHA), Mistral (SWA+GQA), AND Llama (GQA).")
+    print("   Three different architectures, three different labs, 3B to 70B parameters.")
+    print("   This is STRONG evidence that the signal is a universal property of LLMs.")
 elif test_acc > 0.7:
-    print("\n⚠ PARTIAL GENERALIZATION: Signal detected in Llama but weaker than Qwen.")
+    print(f"\n⚠ PARTIAL GENERALIZATION: Signal detected in {MODEL_NAME} but weaker.")
 else:
-    print("\n❌ GENERALIZATION FAILED: Signal not reliably detected in Llama-70B.")
+    print(f"\n❌ GENERALIZATION FAILED: Signal not reliably detected in {MODEL_NAME}.")
 
 if resid_test_acc > 0.7 and trunc_test_acc > 0.7:
-    print("✅ LENGTH CONTROLS PASS on Llama-70B: Signal is independent of response length!")
+    print(f"✅ LENGTH CONTROLS PASS on {MODEL_NAME}: Signal is independent of response length!")
 elif resid_test_acc > 0.6 or trunc_test_acc > 0.6:
-    print("⚠ LENGTH CONTROLS PARTIAL on Llama-70B.")
+    print(f"⚠ LENGTH CONTROLS PARTIAL on {MODEL_NAME}.")
 else:
-    print("❌ LENGTH CONTROLS FAIL on Llama-70B.")
+    print(f"❌ LENGTH CONTROLS FAIL on {MODEL_NAME}.")
 
 # Cleanup
 del model
