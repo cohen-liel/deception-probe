@@ -1,0 +1,34 @@
+{
+  "model": "Mistral-Nemo-Instruct-2407",
+  "lab": "Mistral AI",
+  "architecture": "Sliding Window Attention + Grouped Query Attention (SWA+GQA)",
+  "parameters": "12B",
+  "target_layer": 20,
+  "hidden_dim": 5120,
+  "total_scenarios": 435,
+  "total_samples": 870,
+  "categories": 16,
+  "results": {
+    "cv_accuracy": 0.947,
+    "held_out_test_accuracy": 0.948,
+    "training_accuracy": 1.0,
+    "permutation_test_pvalue": 0.0000,
+    "permutation_baseline": 0.502
+  },
+  "length_controls": {
+    "length_only_baseline": 0.598,
+    "truncation_20_tokens": 0.960,
+    "residualized_probe": 0.943,
+    "tfidf_baseline": 0.879,
+    "length_matched_subsets": true
+  },
+  "white_lies": {
+    "detection_accuracy": 0.99,
+    "white_vs_serious_pvalue": 0.4738,
+    "significantly_different": false
+  },
+  "runtime": {
+    "gpu": "A100",
+    "total_minutes": 55
+  }
+}

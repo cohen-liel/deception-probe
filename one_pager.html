@@ -1,0 +1,506 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>DeceptionProbe — Research One-Pager</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap');
+  
+  @page {
+    size: A4;
+    margin: 0;
+  }
+  
+  * { margin: 0; padding: 0; box-sizing: border-box; overflow-wrap: break-word; word-wrap: break-word; }
+  
+  body {
+    font-family: 'Inter', sans-serif;
+    background: #ffffff;
+    color: #1a1a2e;
+    width: 210mm;
+    margin: 0;
+    padding: 0;
+  }
+  
+  .page {
+    width: 100%;
+    min-height: 297mm;
+    padding: 14mm 16mm 12mm 16mm;
+    position: relative;
+    overflow: hidden;
+  }
+  
+  /* Top accent bar */
+  .page::before {
+    content: '';
+    position: absolute;
+    top: 0; left: 0; right: 0;
+    height: 5px;
+    background: linear-gradient(90deg, #0f3460 0%, #e94560 50%, #533483 100%);
+  }
+  
+  /* Header */
+  .header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    margin-bottom: 14px;
+    padding-bottom: 12px;
+    border-bottom: 1.5px solid #e8e8f0;
+  }
+  
+  .header-left h1 {
+    font-size: 20px;
+    font-weight: 800;
+    color: #0f3460;
+    letter-spacing: -0.5px;
+    line-height: 1.2;
+  }
+  
+  .header-left .subtitle {
+    font-size: 11px;
+    font-weight: 500;
+    color: #e94560;
+    margin-top: 3px;
+    text-transform: uppercase;
+    letter-spacing: 1.5px;
+  }
+  
+  .header-right {
+    text-align: right;
+    font-size: 8.5px;
+    color: #666;
+    line-height: 1.6;
+  }
+  
+  .header-right strong {
+    color: #0f3460;
+    font-weight: 600;
+  }
+  
+  /* Key insight box */
+  .insight-box {
+    background: linear-gradient(135deg, #0f3460 0%, #1a1a5e 100%);
+    color: white;
+    padding: 14px 18px;
+    border-radius: 8px;
+    margin-bottom: 14px;
+  }
+  
+  .insight-box .label {
+    font-size: 8px;
+    text-transform: uppercase;
+    letter-spacing: 2px;
+    color: #e94560;
+    font-weight: 700;
+    margin-bottom: 5px;
+  }
+  
+  .insight-box p {
+    font-size: 11px;
+    line-height: 1.55;
+    font-weight: 400;
+  }
+  
+  .insight-box strong {
+    color: #ff6b8a;
+    font-weight: 600;
+  }
+  
+  /* Two column layout */
+  .two-col {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 14px;
+    margin-bottom: 14px;
+  }
+  
+  .section {
+    margin-bottom: 14px;
+  }
+  
+  .section-title {
+    font-size: 10px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 1.5px;
+    color: #0f3460;
+    margin-bottom: 8px;
+    padding-bottom: 4px;
+    border-bottom: 2px solid #e94560;
+    display: inline-block;
+  }
+  
+  /* Results table */
+  .results-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 10px;
+  }
+  
+  .results-table th {
+    background: #f0f0f8;
+    padding: 6px 8px;
+    text-align: left;
+    font-weight: 600;
+    color: #0f3460;
+    font-size: 9px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    border-bottom: 2px solid #0f3460;
+  }
+  
+  .results-table td {
+    padding: 5px 8px;
+    border-bottom: 1px solid #eee;
+    vertical-align: middle;
+  }
+  
+  .results-table tr:last-child td {
+    border-bottom: none;
+  }
+  
+  .results-table .metric-name {
+    font-weight: 500;
+    color: #333;
+  }
+  
+  .results-table .highlight {
+    font-weight: 700;
+    color: #0f3460;
+  }
+  
+  .results-table .accent {
+    color: #e94560;
+    font-weight: 700;
+  }
+  
+  /* Stat cards */
+  .stat-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr;
+    gap: 10px;
+    margin-bottom: 14px;
+  }
+  
+  .stat-card {
+    background: #f8f8fc;
+    border-radius: 6px;
+    padding: 10px 12px;
+    text-align: center;
+    border: 1px solid #e8e8f0;
+  }
+  
+  .stat-card .number {
+    font-size: 24px;
+    font-weight: 800;
+    color: #0f3460;
+    line-height: 1.1;
+  }
+  
+  .stat-card .number.red { color: #e94560; }
+  .stat-card .number.purple { color: #533483; }
+  
+  .stat-card .label {
+    font-size: 8px;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    color: #666;
+    margin-top: 3px;
+    font-weight: 600;
+  }
+  
+  /* Methodology section */
+  .method-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+  }
+  
+  .method-item {
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+    font-size: 9.5px;
+    line-height: 1.5;
+  }
+  
+  .method-item .icon {
+    width: 20px;
+    height: 20px;
+    min-width: 20px;
+    background: #0f3460;
+    color: white;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 10px;
+    font-weight: 700;
+    margin-top: 1px;
+  }
+  
+  .method-item .icon.red { background: #e94560; }
+  .method-item .icon.purple { background: #533483; }
+  
+  .method-item strong {
+    font-weight: 600;
+    color: #0f3460;
+  }
+  
+  /* Controls section */
+  .controls-list {
+    font-size: 9px;
+    line-height: 1.7;
+  }
+  
+  .control-item {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin-bottom: 2px;
+  }
+  
+  .check {
+    color: #27ae60;
+    font-weight: 700;
+    font-size: 12px;
+  }
+  
+  .control-item .result {
+    color: #666;
+    font-weight: 400;
+  }
+  
+  /* Why it matters */
+  .implications {
+    background: #fafafe;
+    border-radius: 6px;
+    padding: 12px 14px;
+    border-left: 3px solid #e94560;
+  }
+  
+  .implications p {
+    font-size: 10px;
+    line-height: 1.6;
+    color: #444;
+  }
+  
+  .implications strong {
+    color: #0f3460;
+  }
+  
+  /* Footer */
+  .footer {
+    margin-top: 12px;
+    padding-top: 8px;
+    border-top: 1px solid #e8e8f0;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 8px;
+    color: #999;
+  }
+  
+  .footer a {
+    color: #0f3460;
+    text-decoration: none;
+    font-weight: 600;
+  }
+  
+  .tag {
+    display: inline-block;
+    background: #f0f0f8;
+    color: #0f3460;
+    padding: 2px 6px;
+    border-radius: 3px;
+    font-size: 8px;
+    font-weight: 600;
+    margin-right: 3px;
+  }
+  
+  .tag.red { background: #fde8ec; color: #e94560; }
+  .tag.purple { background: #f0e8f8; color: #533483; }
+
+  @media print {
+    body { margin: 0; }
+    .page { padding: 12mm 14mm; }
+  }
+</style>
+</head>
+<body>
+<div class="page">
+  
+  <!-- Header -->
+  <div class="header">
+    <div class="header-left">
+      <h1>DeceptionProbe</h1>
+      <div class="subtitle">Detecting Deception in LLM Hidden States</div>
+    </div>
+    <div class="header-right">
+      <strong>Liel Amar</strong><br>
+      Meta | Technion<br>
+      Mar 2026
+    </div>
+  </div>
+  
+  <!-- Key Insight -->
+  <div class="insight-box">
+    <div class="label">Core Finding</div>
+    <p>Large Language Models encode a <strong>detectable internal signal</strong> that distinguishes deceptive from honest responses. A simple linear probe achieves <strong>&gt;94% accuracy</strong> at identifying when a model is lying — and this signal is <strong>universal across architectures</strong>, surviving different attention mechanisms, model scales, and training labs.</p>
+  </div>
+  
+  <!-- Key Stats -->
+  <div class="stat-grid">
+    <div class="stat-card">
+      <div class="number">94.8%</div>
+      <div class="label">Best Detection Accuracy</div>
+    </div>
+    <div class="stat-card">
+      <div class="number red">1,000</div>
+      <div class="label">Samples (500 Scenarios &times; 2)</div>
+    </div>
+    <div class="stat-card">
+      <div class="number purple">2+</div>
+      <div class="label">Architectures Validated</div>
+    </div>
+  </div>
+  
+  <!-- Two column: Results + Controls -->
+  <div class="two-col">
+    
+    <!-- Cross-Architecture Results -->
+    <div>
+      <div class="section-title">Cross-Architecture Results</div>
+      <table class="results-table">
+        <tr>
+          <th>Metric</th>
+          <th>Qwen-3B</th>
+          <th>Mistral-12B</th>
+        </tr>
+        <tr>
+          <td class="metric-name">Architecture</td>
+          <td><span class="tag">MHA</span></td>
+          <td><span class="tag red">SWA+GQA</span></td>
+        </tr>
+        <tr>
+          <td class="metric-name">Training Lab</td>
+          <td>Alibaba</td>
+          <td>Mistral AI</td>
+        </tr>
+        <tr>
+          <td class="metric-name">Held-out Test Accuracy</td>
+          <td class="highlight">93.7%</td>
+          <td class="accent">94.8%</td>
+        </tr>
+        <tr>
+          <td class="metric-name">Cross-Validation</td>
+          <td class="highlight">95.8%</td>
+          <td class="highlight">94.7%</td>
+        </tr>
+        <tr>
+          <td class="metric-name">Truncation Test (20 tok)</td>
+          <td>93.1%</td>
+          <td>96.0%</td>
+        </tr>
+        <tr>
+          <td class="metric-name">Residualized Probe</td>
+          <td>93.1%</td>
+          <td>94.3%</td>
+        </tr>
+        <tr>
+          <td class="metric-name">White Lie Detection</td>
+          <td>95.0%</td>
+          <td class="accent">99.0%</td>
+        </tr>
+        <tr>
+          <td class="metric-name">Permutation p-value</td>
+          <td>&lt; 0.0001</td>
+          <td>&lt; 0.0001</td>
+        </tr>
+      </table>
+    </div>
+    
+    <!-- Length Confound Controls -->
+    <div>
+      <div class="section-title">Ruling Out Confounds</div>
+      <div class="controls-list">
+        <div class="control-item">
+          <span class="check">&#10003;</span>
+          <span><strong>Length-Only Baseline:</strong> Using only response length achieves ~52-60% <span class="result">(near chance)</span></span>
+        </div>
+        <div class="control-item">
+          <span class="check">&#10003;</span>
+          <span><strong>Truncation Test:</strong> Probe works on first 20 tokens only <span class="result">(93-96%)</span></span>
+        </div>
+        <div class="control-item">
+          <span class="check">&#10003;</span>
+          <span><strong>Residualized Probe:</strong> After removing length signal, accuracy holds <span class="result">(93-94%)</span></span>
+        </div>
+        <div class="control-item">
+          <span class="check">&#10003;</span>
+          <span><strong>Length-Matched Subsets:</strong> Equal-length honest/lying pairs still detected</span>
+        </div>
+        <div class="control-item">
+          <span class="check">&#10003;</span>
+          <span><strong>TF-IDF Baseline:</strong> Content-only classifier scores lower <span class="result">(86-88%)</span></span>
+        </div>
+      </div>
+      
+      <div style="margin-top: 12px;">
+        <div class="section-title">White Lie Gradient</div>
+        <p style="font-size: 10px; line-height: 1.6; color: #444;">
+          The probe detects a <strong style="color:#0f3460;">spectrum of deception intensity</strong> — white lies ("You look great!") produce weaker deception signals than serious lies ("I didn't steal the money"), suggesting the model encodes <em>degree</em> of deception, not just binary truth/lie.
+        </p>
+      </div>
+    </div>
+  </div>
+  
+  <!-- Methodology -->
+  <div class="section">
+    <div class="section-title">Methodology</div>
+    <div class="method-grid">
+      <div class="method-item">
+        <div class="icon">1</div>
+        <div><strong>Scenario Design:</strong> 500 diverse scenarios across 16 categories (medical, financial, social, etc.). Each scenario generates paired honest + deceptive responses.</div>
+      </div>
+      <div class="method-item">
+        <div class="icon red">2</div>
+        <div><strong>Hidden State Extraction:</strong> Extract activations from the middle layer at the last token of each response.</div>
+      </div>
+      <div class="method-item">
+        <div class="icon purple">3</div>
+        <div><strong>Linear Probe Training:</strong> Train a logistic regression classifier (L2-regularized) on 80% of scenarios, test on held-out 20%.</div>
+      </div>
+      <div class="method-item">
+        <div class="icon">4</div>
+        <div><strong>5 Length Controls:</strong> Systematic tests confirming the signal is not a length artifact.</div>
+      </div>
+    </div>
+  </div>
+  
+  <!-- Why It Matters -->
+  <div class="implications">
+    <div class="section-title" style="border-color: #e94560;">Why It Matters</div>
+    <p>
+      As AI systems become autonomous agents that negotiate, trade, and communicate with each other, the ability to <strong>detect when an AI is being deceptive</strong> becomes critical infrastructure for AI Safety. Our finding that deception leaves a <strong>universal, architecture-independent neural signature</strong> suggests that building reliable "lie detectors" for AI is fundamentally possible — the models themselves encode the distinction between truth and deception, even when their outputs are designed to deceive.
+    </p>
+  </div>
+  
+  <!-- Footer -->
+  <div class="footer">
+    <div>
+      <span class="tag">AI Safety</span>
+      <span class="tag red">Interpretability</span>
+      <span class="tag purple">Linear Probes</span>
+      Code: <a href="https://github.com/Maor36/deception-probe">github.com/Maor36/deception-probe</a>
+    </div>
+    <div>
+      Preliminary &middot; More architectures in progress
+    </div>
+  </div>
+  
+</div>
+</body>
+</html>

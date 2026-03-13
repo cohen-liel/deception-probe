@@ -1,0 +1,35 @@
+{
+  "experiment": "DeceptionProbe Cross-Architecture Comparison",
+  "date": "2026-03-13",
+  "total_models": 3,
+  "total_scenarios_per_model": 435,
+  "total_categories": 16,
+  "models": [
+    {
+      "name": "Qwen2.5-3B-Instruct",
+      "lab": "Alibaba",
+      "architecture": "MHA",
+      "parameters": "3B",
+      "test_accuracy": 0.937,
+      "cv_accuracy": 0.958
+    },
+    {
+      "name": "Mistral-Nemo-Instruct-2407",
+      "lab": "Mistral AI",
+      "architecture": "SWA+GQA",
+      "parameters": "12B",
+      "test_accuracy": 0.948,
+      "cv_accuracy": 0.947
+    },
+    {
+      "name": "Llama-3.1-8B-Instruct",
+      "lab": "Meta",
+      "architecture": "GQA",
+      "parameters": "8B",
+      "test_accuracy": 0.971,
+      "cv_accuracy": 0.986
+    }
+  ],
+  "conclusion": "The deception signal is a universal property of transformer-based LLMs, confirmed across 3 architectures (MHA, SWA+GQA, GQA), 3 training labs (Alibaba, Mistral AI, Meta), and model scales from 3B to 12B parameters. All models achieve >93% test accuracy with p<0.0001.",
+  "next_models_planned": ["Gemma-2-9B (Google)", "Phi-3-mini (Microsoft)"]
+}

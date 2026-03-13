@@ -1879,6 +1879,19 @@ X_truncated = np.array(X_truncated)
 
 print(f"\nExtraction complete! Full shape: {X_all.shape}, Truncated shape: {X_truncated.shape}")
 
+# === SAVE HIDDEN STATES TO DISK (checkpoint!) ===
+np.save(SAVE_DIR / "X_all.npy", X_all)
+np.save(SAVE_DIR / "y_all.npy", y_all)
+np.save(SAVE_DIR / "X_truncated.npy", X_truncated)
+np.save(SAVE_DIR / "lengths_all.npy", lengths_all)
+with open(SAVE_DIR / "ids_all.json", "w") as f:
+    json.dump(ids_all, f)
+with open(SAVE_DIR / "categories_all.json", "w") as f:
+    json.dump(categories_all.tolist(), f)
+print(f"Hidden states saved to {SAVE_DIR} ✓")
+print(f"  X_all: {X_all.shape}, X_truncated: {X_truncated.shape}")
+print(f"  Files: X_all.npy, y_all.npy, X_truncated.npy, lengths_all.npy, ids_all.json, categories_all.json")
+
 # ============================================================
 # TRAIN/TEST SPLIT (80/20 by scenario)
 # ============================================================
@@ -1921,41 +1934,49 @@ print(f"\n{'='*60}")
 print(f"CROSS-VALIDATION (Layer {TARGET_LAYER})")
 print(f"{'='*60}")
 
-scaler = StandardScaler()
-X_train_scaled = scaler.fit_transform(X_train)
-X_test_scaled = scaler.transform(X_test)
+try:
+    scaler = StandardScaler()
+    X_train_scaled = scaler.fit_transform(X_train)
+    X_test_scaled = scaler.transform(X_test)
 
-pair_scores = []
-for fold_i, scenario_idx in enumerate(train_scenario_idx):
-    fold_test = [fold_i*2, fold_i*2+1]
-    fold_train = [j for j in range(TRAIN_SIZE*2) if j not in fold_test]
+    pair_scores = []
+    for fold_i in range(TRAIN_SIZE):
+        fold_test = [fold_i*2, fold_i*2+1]
+        fold_train = [j for j in range(TRAIN_SIZE*2) if j not in fold_test]
 
-    clf_fold = LogisticRegression(C=1.0, max_iter=1000, random_state=SEED)
-    clf_fold.fit(X_train_scaled[fold_train], y_train[fold_train])
-    fold_acc = clf_fold.score(X_train_scaled[fold_test], y_train[fold_test])
-    pair_scores.append(fold_acc)
+        clf_fold = LogisticRegression(C=1.0, max_iter=1000, random_state=SEED)
+        clf_fold.fit(X_train_scaled[fold_train], y_train[fold_train])
+        fold_acc = clf_fold.score(X_train_scaled[fold_test], y_train[fold_test])
+        pair_scores.append(fold_acc)
 
-    scenario_name = generated_data[scenario_idx]["id"]
-    cat = generated_data[scenario_idx]["category"]
-    mark = "✓" if fold_acc == 1.0 else "✗"
-    if fold_acc < 1.0:
-        print(f"  Fold {fold_i+1:3d} ({scenario_name:30s} [{cat:20s}]): {fold_acc:.1f} {mark}")
+        scenario_idx = train_scenario_idx[fold_i]
+        scenario_name = generated_data[scenario_idx]["id"]
+        cat = generated_data[scenario_idx]["category"]
+        mark = "✓" if fold_acc == 1.0 else "✗"
+        if fold_acc < 1.0:
+            print(f"  Fold {fold_i+1:3d} ({scenario_name:30s} [{cat:20s}]): {fold_acc:.1f} {mark}")
 
-cv_accuracy = np.mean(pair_scores)
-cv_perfect = sum(1 for s in pair_scores if s == 1.0)
-print(f"\nLOPOCV accuracy: {cv_accuracy:.3f} ({cv_perfect}/{len(pair_scores)} perfect)")
+    cv_accuracy = np.mean(pair_scores)
+    cv_perfect = sum(1 for s in pair_scores if s == 1.0)
+    print(f"\nLOPOCV accuracy: {cv_accuracy:.3f} ({cv_perfect}/{len(pair_scores)} perfect)")
 
-# CV by category
-print(f"\nCV accuracy by category:")
-cat_cv = {}
-for fold_i, scenario_idx in enumerate(train_scenario_idx):
-    cat = generated_data[scenario_idx]["category"]
-    if cat not in cat_cv:
-        cat_cv[cat] = []
-    cat_cv[cat].append(pair_scores[fold_i])
-for cat in sorted(cat_cv.keys()):
-    scores = cat_cv[cat]
-    print(f"  {cat:25s}: {np.mean(scores):.3f} ({sum(1 for s in scores if s==1.0)}/{len(scores)} perfect)")
+    # CV by category
+    print(f"\nCV accuracy by category:")
+    cat_cv = {}
+    for fold_i in range(TRAIN_SIZE):
+        scenario_idx = train_scenario_idx[fold_i]
+        cat = generated_data[scenario_idx]["category"]
+        if cat not in cat_cv:
+            cat_cv[cat] = []
+        cat_cv[cat].append(pair_scores[fold_i])
+    for cat in sorted(cat_cv.keys()):
+        scores = cat_cv[cat]
+        print(f"  {cat:25s}: {np.mean(scores):.3f} ({sum(1 for s in scores if s==1.0)}/{len(scores)} perfect)")
+except Exception as e:
+    print(f"\nCV error (non-fatal): {e}")
+    cv_accuracy = -1
+    cv_perfect = 0
+    pair_scores = []
 
 # ============================================================
 # HELD-OUT TEST
@@ -1964,6 +1985,12 @@ for cat in sorted(cat_cv.keys()):
 print(f"\n{'='*60}")
 print(f"HELD-OUT TEST (Layer {TARGET_LAYER})")
 print(f"{'='*60}")
+
+# Re-create scaler if CV failed
+if 'X_train_scaled' not in dir() or X_train_scaled is None:
+    scaler = StandardScaler()
+    X_train_scaled = scaler.fit_transform(X_train)
+    X_test_scaled = scaler.transform(X_test)
 
 probe = LogisticRegression(C=1.0, max_iter=1000, random_state=SEED)
 probe.fit(X_train_scaled, y_train)

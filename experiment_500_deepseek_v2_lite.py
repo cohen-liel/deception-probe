@@ -37,7 +37,7 @@ Expected runtime on T4: ~30-45 minutes
 """
 
 import subprocess
-subprocess.run(["pip", "install", "-q", "transformers", "accelerate", "torch",
+subprocess.run(["pip", "install", "-q", "transformers==4.43.0", "accelerate", "torch",
                 "scikit-learn", "scipy", "bitsandbytes"], check=True)
 
 import torch
