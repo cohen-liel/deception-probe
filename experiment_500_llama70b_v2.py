@@ -1551,38 +1551,19 @@ tokenizer = AutoTokenizer.from_pretrained(MODEL_NAME, token=HF_TOKEN)
 if tokenizer.pad_token is None:
     tokenizer.pad_token = tokenizer.eos_token
 print(f"  Tokenizer loaded ✓")
-
-# Set max memory to avoid OOM
-max_mem = {0: "70GiB", "cpu": "80GiB"}
-
-try:
-    model = AutoModelForCausalLM.from_pretrained(
-        MODEL_NAME,
-        quantization_config=bnb_config,
-        output_hidden_states=True,
-        device_map="auto",
-        max_memory=max_mem,
-        torch_dtype=torch.float16,
-        token=HF_TOKEN,
-        low_cpu_mem_usage=True,
-    )
-except Exception as e:
-    print(f"First attempt failed: {e}")
-    print("Retrying with device_map='sequential'...")
-    gc.collect()
-    torch.cuda.empty_cache()
-    model = AutoModelForCausalLM.from_pretrained(
-        MODEL_NAME,
-        quantization_config=bnb_config,
-        output_hidden_states=True,
-        device_map="sequential",
-        max_memory=max_mem,
-        torch_dtype=torch.float16,
-        token=HF_TOKEN,
-        low_cpu_mem_usage=True,
-    )
+# BitsAndBytes handles device placement automatically
+# Do NOT use max_memory with 4-bit quantization (causes .to() error)
+model = AutoModelForCausalLM.from_pretrained(
+    MODEL_NAME,
+    quantization_config=bnb_config,
+    output_hidden_states=True,
+    device_map="auto",
+    torch_dtype=torch.float16,
+    token=HF_TOKEN,
+    low_cpu_mem_usage=True,
+)
 model.eval()
-print(f"  Model loaded ✓")
+print(f"  Model loaded \u2713")
 
 monitor_resources("AFTER MODEL LOAD")
 
