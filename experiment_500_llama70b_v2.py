@@ -83,7 +83,7 @@ from transformers import AutoTokenizer, AutoModelForCausalLM
 try:
     from transformers import BitsAndBytesConfig
 except ImportError:
-    pass  # Not needed for GPTQ
+    pass  # Not needed for AWQ
 from sklearn.linear_model import LogisticRegression, LinearRegression
 from sklearn.preprocessing import StandardScaler
 from scipy import stats
@@ -1549,9 +1549,10 @@ for c, n in sorted(cat_counts_init.items()):
     print(f"  {c}: {n}")
 
 # ============================================================
-# LOAD MODEL — Llama-3.1-70B-Instruct (Meta, 70B, GPTQ 4-bit pre-quantized)
-# Uses GPTQ INT4 pre-quantized model that fits in ~35GB VRAM
+# LOAD MODEL — Llama-3.1-70B-Instruct (Meta, 70B, AWQ 4-bit pre-quantized)
+# Uses AWQ INT4 pre-quantized model that fits in ~35GB VRAM
 # Works on both A100-40GB and A100-80GB
+# NOTE: transformers>=4.36 supports AWQ natively without autoawq package
 # ============================================================
 
 print(f"\n{'='*60}")
