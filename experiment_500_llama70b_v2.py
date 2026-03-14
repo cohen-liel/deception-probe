@@ -1546,7 +1546,7 @@ for c, n in sorted(cat_counts_init.items()):
 
 # ============================================================
 # LOAD MODEL — Llama-3.1-70B-Instruct (Meta, 70B, 4-bit quantized)
-# Uses BitsAndBytes NF4 quantization to fit in A100 80GB
+# Uses BitsAndBytes NF4 quantization - works on A100 40GB or 80GB with CPU offloading
 # ============================================================
 
 print(f"\n{'='*60}")
@@ -1561,8 +1561,17 @@ if free_gb < 80:
     print(f"\n⚠️ WARNING: Only {free_gb:.0f} GB free. 70B needs ~140GB during download.")
     print(f"   Attempting anyway with streaming download...")
 
-print(f"Using 4-bit NF4 quantization (BitsAndBytes) for 70B model")
-print(f"Expected VRAM: ~38-42 GB after quantization")
+# Detect GPU VRAM to choose strategy
+gpu_total_gb = torch.cuda.get_device_properties(0).total_memory / 1e9 if torch.cuda.is_available() else 0
+print(f"GPU VRAM: {gpu_total_gb:.1f} GB")
+
+if gpu_total_gb >= 75:
+    print(f"Using 4-bit NF4 quantization (BitsAndBytes) for 70B model - FULL GPU")
+    print(f"Expected VRAM: ~38-42 GB after quantization")
+else:
+    print(f"Using 4-bit NF4 quantization with CPU offloading for 70B model")
+    print(f"GPU has {gpu_total_gb:.0f}GB - will offload some layers to CPU")
+    print(f"This will be slower but will work!")
 
 # Configure 4-bit quantization
 bnb_config = BitsAndBytesConfig(
@@ -1576,17 +1585,68 @@ tokenizer = AutoTokenizer.from_pretrained(MODEL_NAME, token=HF_TOKEN)
 if tokenizer.pad_token is None:
     tokenizer.pad_token = tokenizer.eos_token
 print(f"  Tokenizer loaded ✓")
-# BitsAndBytes handles device placement automatically
-# Do NOT use max_memory with 4-bit quantization (causes .to() error)
-model = AutoModelForCausalLM.from_pretrained(
-    MODEL_NAME,
-    quantization_config=bnb_config,
-    output_hidden_states=True,
-    device_map="auto",
-    torch_dtype=torch.float16,
-    token=HF_TOKEN,
-    low_cpu_mem_usage=True,
-)
+
+# Set up device_map based on available VRAM
+import os
+os.makedirs('/content/offload', exist_ok=True)
+
+if gpu_total_gb >= 75:
+    # Full GPU - everything fits
+    device_map_config = "auto"
+else:
+    # Need CPU offloading for 40GB GPU
+    # 70B in 4-bit ~= 38-42GB, 40GB GPU can't fit it all
+    # Use max_memory to force some layers to CPU
+    max_mem = {
+        0: f"{int(gpu_total_gb * 0.85)}GiB",  # Leave some headroom on GPU
+        "cpu": "60GiB"
+    }
+    device_map_config = "auto"
+    print(f"  max_memory config: GPU={int(gpu_total_gb * 0.85)}GiB, CPU=60GiB")
+
+try:
+    if gpu_total_gb >= 75:
+        model = AutoModelForCausalLM.from_pretrained(
+            MODEL_NAME,
+            quantization_config=bnb_config,
+            output_hidden_states=True,
+            device_map=device_map_config,
+            torch_dtype=torch.float16,
+            token=HF_TOKEN,
+            low_cpu_mem_usage=True,
+        )
+    else:
+        model = AutoModelForCausalLM.from_pretrained(
+            MODEL_NAME,
+            quantization_config=bnb_config,
+            output_hidden_states=True,
+            device_map=device_map_config,
+            max_memory=max_mem,
+            torch_dtype=torch.float16,
+            token=HF_TOKEN,
+            low_cpu_mem_usage=True,
+            offload_folder='/content/offload',
+        )
+    print(f"  Model loaded with primary strategy ✓")
+except Exception as e:
+    print(f"  Primary loading failed: {e}")
+    print(f"  Trying fallback with more aggressive offloading...")
+    # Fallback: even more aggressive CPU offloading
+    max_mem_fallback = {
+        0: f"{int(gpu_total_gb * 0.70)}GiB",
+        "cpu": "80GiB"
+    }
+    model = AutoModelForCausalLM.from_pretrained(
+        MODEL_NAME,
+        quantization_config=bnb_config,
+        output_hidden_states=True,
+        device_map="auto",
+        max_memory=max_mem_fallback,
+        torch_dtype=torch.float16,
+        token=HF_TOKEN,
+        low_cpu_mem_usage=True,
+        offload_folder='/content/offload',
+    )
 model.eval()
 print(f"  Model loaded \u2713")
 
