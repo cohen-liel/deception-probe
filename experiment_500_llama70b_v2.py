@@ -1569,32 +1569,38 @@ if free_gb < 50:
 gpu_total_gb = torch.cuda.get_device_properties(0).total_memory / 1e9 if torch.cuda.is_available() else 0
 print(f"GPU VRAM: {gpu_total_gb:.1f} GB")
 
-# Use GPTQ pre-quantized model - fits in ~35GB VRAM
-GPTQ_MODEL = "hugging-quants/Meta-Llama-3.1-70B-Instruct-GPTQ-INT4"
-print(f"Using GPTQ INT4 pre-quantized model: {GPTQ_MODEL}")
+# Use AWQ pre-quantized model - fits in ~35GB VRAM, easy to install
+AWQ_MODEL = "hugging-quants/Meta-Llama-3.1-70B-Instruct-AWQ-INT4"
+print(f"Using AWQ INT4 pre-quantized model: {AWQ_MODEL}")
 print(f"Expected VRAM: ~35 GB (fits in 40GB GPU!)")
 
-tokenizer = AutoTokenizer.from_pretrained(GPTQ_MODEL, token=HF_TOKEN)
+tokenizer = AutoTokenizer.from_pretrained(AWQ_MODEL, token=HF_TOKEN)
 if tokenizer.pad_token is None:
     tokenizer.pad_token = tokenizer.eos_token
-print(f"  Tokenizer loaded ✓")
+print(f"  Tokenizer loaded \u2713")
 
 try:
     model = AutoModelForCausalLM.from_pretrained(
-        GPTQ_MODEL,
+        AWQ_MODEL,
         output_hidden_states=True,
         device_map="auto",
         torch_dtype=torch.float16,
         token=HF_TOKEN,
         low_cpu_mem_usage=True,
     )
-    print(f"  Model loaded with GPTQ INT4 ✓")
+    print(f"  Model loaded with AWQ INT4 \u2713")
 except Exception as e:
-    print(f"  GPTQ loading failed: {e}")
-    print(f"  Trying AWQ quantized model as fallback...")
-    AWQ_MODEL = "hugging-quants/Meta-Llama-3.1-70B-Instruct-AWQ-INT4"
+    print(f"  AWQ loading failed: {e}")
+    print(f"  Trying BitsAndBytes 4-bit as fallback (needs 80GB GPU)...")
+    bnb_config = BitsAndBytesConfig(
+        load_in_4bit=True,
+        bnb_4bit_quant_type="nf4",
+        bnb_4bit_compute_dtype=torch.float16,
+        bnb_4bit_use_double_quant=True,
+    )
     model = AutoModelForCausalLM.from_pretrained(
-        AWQ_MODEL,
+        MODEL_NAME,
+        quantization_config=bnb_config,
         output_hidden_states=True,
         device_map="auto",
         torch_dtype=torch.float16,
