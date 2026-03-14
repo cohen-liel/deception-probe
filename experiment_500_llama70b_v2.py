@@ -1549,10 +1549,9 @@ for c, n in sorted(cat_counts_init.items()):
     print(f"  {c}: {n}")
 
 # ============================================================
-# LOAD MODEL — Llama-3.1-70B-Instruct (Meta, 70B, AWQ 4-bit pre-quantized)
-# Uses AWQ INT4 pre-quantized model that fits in ~35GB VRAM
-# Works on both A100-40GB and A100-80GB
-# NOTE: transformers>=4.36 supports AWQ natively without autoawq package
+# LOAD MODEL — Llama-3.1-70B-Instruct (Meta, 70B)
+# Strategy: 8-bit quantization with CPU offloading for 40GB GPU
+# 8-bit supports llm_int8_enable_fp32_cpu_offload (4-bit does NOT)
 # ============================================================
 
 print(f"\n{'='*60}")
@@ -1564,40 +1563,42 @@ monitor_resources("BEFORE MODEL DOWNLOAD")
 # Check disk space
 free_gb = check_disk_space()
 if free_gb < 50:
-    print(f"\n⚠️ WARNING: Only {free_gb:.0f} GB free.")
+    print(f"\n\u26a0\ufe0f WARNING: Only {free_gb:.0f} GB free.")
 
 # Detect GPU VRAM
 gpu_total_gb = torch.cuda.get_device_properties(0).total_memory / 1e9 if torch.cuda.is_available() else 0
 print(f"GPU VRAM: {gpu_total_gb:.1f} GB")
 
-# Use AWQ pre-quantized model - fits in ~35GB VRAM, easy to install
-AWQ_MODEL = "hugging-quants/Meta-Llama-3.1-70B-Instruct-AWQ-INT4"
-print(f"Using AWQ INT4 pre-quantized model: {AWQ_MODEL}")
-print(f"Expected VRAM: ~35 GB (fits in 40GB GPU!)")
-
-tokenizer = AutoTokenizer.from_pretrained(AWQ_MODEL, token=HF_TOKEN)
+tokenizer = AutoTokenizer.from_pretrained(MODEL_NAME, token=HF_TOKEN)
 if tokenizer.pad_token is None:
     tokenizer.pad_token = tokenizer.eos_token
 print(f"  Tokenizer loaded \u2713")
 
-try:
+if gpu_total_gb >= 75:
+    # A100-80GB: use 4-bit quantization (fastest)
+    print(f"GPU has {gpu_total_gb:.0f}GB - using 4-bit quantization (fastest)")
+    bnb_config = BitsAndBytesConfig(
+        load_in_4bit=True,
+        bnb_4bit_quant_type="nf4",
+        bnb_4bit_compute_dtype=torch.float16,
+        bnb_4bit_use_double_quant=True,
+    )
     model = AutoModelForCausalLM.from_pretrained(
-        AWQ_MODEL,
+        MODEL_NAME,
+        quantization_config=bnb_config,
         output_hidden_states=True,
         device_map="auto",
         torch_dtype=torch.float16,
         token=HF_TOKEN,
         low_cpu_mem_usage=True,
     )
-    print(f"  Model loaded with AWQ INT4 \u2713")
-except Exception as e:
-    print(f"  AWQ loading failed: {e}")
-    print(f"  Trying BitsAndBytes 4-bit as fallback (needs 80GB GPU)...")
+else:
+    # A100-40GB: use 8-bit quantization with CPU offloading
+    print(f"GPU has {gpu_total_gb:.0f}GB - using 8-bit quantization with CPU offloading")
+    print(f"This will be slower but WILL WORK on 40GB GPU!")
     bnb_config = BitsAndBytesConfig(
-        load_in_4bit=True,
-        bnb_4bit_quant_type="nf4",
-        bnb_4bit_compute_dtype=torch.float16,
-        bnb_4bit_use_double_quant=True,
+        load_in_8bit=True,
+        llm_int8_enable_fp32_cpu_offload=True,
     )
     model = AutoModelForCausalLM.from_pretrained(
         MODEL_NAME,
