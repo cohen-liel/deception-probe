@@ -37,8 +37,8 @@ Expected runtime on A100: ~90-120 minutes
 """
 
 import subprocess
-subprocess.run(["pip", "install", "-q", "transformers>=4.45.0", "accelerate", "torch",
-                "scikit-learn", "scipy", "bitsandbytes", "huggingface_hub"], check=True)
+subprocess.run(["pip", "install", "-q", "transformers>=4.45.0", "accelerate>=0.33.0", "torch",
+                 "scikit-learn", "scipy", "bitsandbytes>=0.43.0", "huggingface_hub"], check=True)
 
 # ============================================================
 # GOOGLE DRIVE BACKUP — Prevents data loss on disconnect
