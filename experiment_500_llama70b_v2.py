@@ -40,6 +40,31 @@ import subprocess
 subprocess.run(["pip", "install", "-q", "transformers>=4.45.0", "accelerate", "torch",
                 "scikit-learn", "scipy", "bitsandbytes", "huggingface_hub"], check=True)
 
+# ============================================================
+# GOOGLE DRIVE BACKUP — Prevents data loss on disconnect
+# ============================================================
+try:
+    from google.colab import drive
+    drive.mount('/content/drive', force_remount=False)
+    DRIVE_BACKUP_DIR = Path('/content/drive/MyDrive/deception_probe_results')
+    DRIVE_BACKUP_DIR.mkdir(parents=True, exist_ok=True)
+    print(f"Google Drive mounted ✓ — Backup dir: {DRIVE_BACKUP_DIR}")
+    USE_DRIVE_BACKUP = True
+except Exception as e:
+    print(f"Google Drive not available ({e}) — results saved locally only")
+    USE_DRIVE_BACKUP = False
+
+def backup_to_drive(local_path, label=""):
+    """Copy a file to Google Drive for persistence."""
+    if USE_DRIVE_BACKUP:
+        try:
+            import shutil as _shutil
+            dest = DRIVE_BACKUP_DIR / Path(local_path).name
+            _shutil.copy2(local_path, dest)
+            print(f"  💾 Backed up to Drive: {dest.name} {label}")
+        except Exception as e:
+            print(f"  ⚠ Drive backup failed: {e}")
+
 # Authenticate with HuggingFace for gated Llama model
 from huggingface_hub import login
 HF_TOKEN = "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"
@@ -1680,6 +1705,7 @@ else:
         if (i + 1) % 25 == 0:
             with open(RESPONSES_FILE, "w") as f:
                 json.dump(generated_data, f, indent=2, ensure_ascii=False)
+            backup_to_drive(RESPONSES_FILE, f"(checkpoint {i+1}/{N_SCENARIOS})")
             elapsed = time.time() - start_time
             rate = (i + 1) / elapsed * 60
             remaining = (N_SCENARIOS - i - 1) / rate if rate > 0 else 0
@@ -1689,6 +1715,7 @@ else:
     # Final save
     with open(RESPONSES_FILE, "w") as f:
         json.dump(generated_data, f, indent=2, ensure_ascii=False)
+    backup_to_drive(RESPONSES_FILE, "(Phase 1 complete - all responses)")
 
     elapsed = time.time() - start_time
     print(f"\nPhase 1 complete! {len(generated_data)} scenarios in {elapsed/60:.1f} minutes")
@@ -2299,8 +2326,10 @@ final_results = {
     },
 }
 
-with open(SAVE_DIR / f"results_{model_short_name}.json", "w") as f:
+results_path = SAVE_DIR / f"results_{model_short_name}.json"
+with open(results_path, "w") as f:
     json.dump(final_results, f, indent=2)
+backup_to_drive(results_path, "(FINAL RESULTS)")
 
 # Save probe weights (the linear boundary) for analysis
 probe_data = {
@@ -2314,9 +2343,11 @@ probe_data = {
     "num_layers": int(model.config.num_hidden_layers),
     "test_accuracy": float(test_acc),
 }
-with open(SAVE_DIR / f"probe_weights_{model_short_name}.json", "w") as f:
+probe_path = SAVE_DIR / f"probe_weights_{model_short_name}.json"
+with open(probe_path, "w") as f:
     json.dump(probe_data, f)
-print(f"Probe weights saved to {SAVE_DIR}/probe_weights_{model_short_name}.json")
+backup_to_drive(probe_path, "(PROBE WEIGHTS)")
+print(f"Probe weights saved to {probe_path}")
 
 # ============================================================
 # FINAL SUMMARY — 5-MODEL CROSS-ARCHITECTURE + SCALE COMPARISON
