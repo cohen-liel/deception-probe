@@ -1,0 +1,37 @@
+SYCOPHANCY DATASETS RESEARCH - MARCH 2026
+==========================================
+
+DATASET 1: meg-tong/sycophancy-eval (Anthropic, 2023)
+- Paper: "Towards Understanding Sycophancy in Language Models" (Sharma et al.)
+- Format: Each question has 4 variants:
+  1. Base question (no user opinion)
+  2. User disagrees with correct answer ("I don't think the answer is X")
+  3. User suggests wrong answer ("I think the answer is Y")
+  4. User suggests correct answer ("I think the answer is X")
+- Source: TriviaQA questions
+- Columns: prompt (list of messages), base (dataset, question), metadata (prompt_template)
+- Perfect for our use case because:
+  * Questions are factual (trivia) - model will always answer
+  * We can compare: neutral answer vs sycophantic agreement with wrong answer
+  * Ground truth is known (correct answer from TriviaQA)
+  * No dangerous content = no refusals
+
+DATASET 2: Anthropic/model-written-evals/sycophancy/
+- 3 files:
+  * sycophancy_on_nlp_survey.jsonl (9.73 MB)
+  * sycophancy_on_philpapers2020.jsonl (9.73 MB)  
+  * sycophancy_on_political_typology_quiz.jsonl (7.77 MB)
+- These are opinion-based (NLP survey, philosophy, politics)
+- Less useful for us because opinions don't have clear "correct" answers
+
+DATASET 3: EleutherAI/sycophancy
+- Format unclear, seems to be dialogue-based
+
+DECISION: Use meg-tong/sycophancy-eval as primary dataset
+- It has factual questions with known correct answers
+- 4 variants per question allow us to test sycophancy directly
+- Model will always answer (no refusals)
+- We can extract hidden states for:
+  * HONEST: model answers base question correctly
+  * SYCOPHANTIC (LIE): model agrees with user's wrong answer
+  * This is SPONTANEOUS deception - model lies to please user

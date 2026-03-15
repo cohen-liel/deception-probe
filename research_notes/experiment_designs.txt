@@ -1,0 +1,69 @@
+EXPERIMENT DESIGNS - COMPREHENSIVE PLAN
+========================================
+
+EXPERIMENT 3: SYCOPHANCY AT SCALE
+Dataset: meg-tong/sycophancy-eval (answer.jsonl)
+Format: JSONL with keys: prompt, base, metadata
+- Each question from TriviaQA has variants:
+  * Base question (no user opinion) → model answers correctly = TRUTH
+  * User suggests wrong answer → model may agree = SYCOPHANTIC LIE
+  * User suggests correct answer → model agrees = TRUTH (control)
+  * User disagrees with correct answer → model may flip = SYCOPHANTIC LIE
+
+Approach:
+1. Load answer.jsonl from meg-tong/sycophancy-eval
+2. For each question, generate Llama-8B response to:
+   a) Base question (neutral) → expect truthful answer
+   b) User suggests wrong answer → may get sycophantic agreement
+3. Extract hidden states from both responses
+4. Label: 0=truthful (base), 1=sycophantic (agrees with wrong answer)
+5. CRITICAL: Only label as sycophantic if model ACTUALLY agrees with wrong answer
+   (not if it corrects the user - that's honest!)
+6. Train probe with strict 70/30 split + 5-fold cross-validation
+
+Confound Controls:
+- Truncation to 20 tokens (prevents length confound)
+- Residual regression (remove length signal)
+- Length-only baseline (prove probe uses more than length)
+- Topic-balanced split (prevent topic leakage)
+- Permutation test (prove significance)
+
+EXPERIMENT 4: TRUTH vs LIE vs HALLUCINATION (3-way)
+Key insight: These are THREE different states in hidden space:
+- TRUTH: Model knows answer and says it correctly
+- LIE: Model knows answer but says something different (sycophancy/safety)
+- HALLUCINATION: Model doesn't know answer and makes something up
+
+Approach:
+1. Use TruthfulQA + custom questions
+2. For each question, determine:
+   a) Does model know the answer? (test in neutral context)
+   b) Does model answer correctly? (compare to ground truth)
+3. Categories:
+   - TRUTH: knows + answers correctly
+   - LIE: knows + answers incorrectly (under pressure/sycophancy)
+   - HALLUCINATION: doesn't know + answers incorrectly (confident wrong answer)
+4. Extract hidden states for all three categories
+5. Train 3-way classifier (multinomial logistic regression)
+6. Also train 3 binary classifiers: truth-vs-lie, truth-vs-hallucination, lie-vs-hallucination
+
+How to create hallucination examples:
+- Use obscure questions model is unlikely to know
+- Verify model doesn't know by checking if neutral answer is wrong
+- Questions about fictional entities, very recent events, obscure trivia
+
+EXPERIMENT 5: MULTI-LAYER SWEEP
+- Run probe on ALL 32 layers of Llama-8B
+- For each layer, compute: balanced accuracy, AUROC, cross-validation score
+- Plot layer-by-layer performance curve
+- Hypothesis: middle layers (12-20) should be best for deception detection
+- This is critical because layer 16 was chosen heuristically - need to validate
+
+ACADEMIC INTEGRITY COMMITMENTS:
+1. Report ALL results including failures
+2. Use cross-validation (not just single split)
+3. Include permutation test for statistical significance
+4. Test for confounds (length, topic, style)
+5. If accuracy is near chance (50%), report it honestly
+6. If probe detects style/length instead of deception, report it
+7. Compare to random baseline and length-only baseline

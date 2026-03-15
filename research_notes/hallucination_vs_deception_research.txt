@@ -1,0 +1,39 @@
+HALLUCINATION VS DECEPTION RESEARCH - MARCH 2026
+=================================================
+
+KEY FINDINGS FROM LATEST RESEARCH:
+
+1. HALLUCINATION VS DECEPTION (ICML 2026)
+Paper: "Disentangling Deception and Hallucination Failures in LLMs"
+- Hallucination = knowledge doesn't exist in model (irreversible absence)
+- Deception = knowledge exists but is suppressed (sparse, distributed suppression)
+- Linear Probes: 81% accuracy distinguishing deception from hallucination
+- Linear Probes: 92% accuracy distinguishing hallucination from correct answer
+- Activation Steering: Can reverse deception (30-50%) but NOT hallucination
+- KEY INSIGHT: The information IS there for deception, just suppressed
+
+2. HALLUCINATION DETECTION FROM HIDDEN STATES
+Paper: "INSIDE: LLMs' Internal States Retain the Power of Hallucination Detection"
+- Middle layers are key (layers 15-21 in 36-layer models)
+- Glass ceiling: ~83-84% accuracy, AUC 91% for hallucination detection
+- Early layers = syntax, Late layers = generation, Middle layers = semantics
+
+3. OMISSION DETECTION (March 2026)
+Paper: "Probing the Limits of the Lie Detector Approach to LLM Deception"
+Author: Tom-Felix Berger, Bochum University
+- Truth Probes: 83.5% on explicit lies, BUT 47-57% on omission (near chance!)
+- Solution: Train on DIALOGUE data (not single sentences) → +15-25% improvement
+- Also: Train on "second-order beliefs" (what model thinks USER will believe)
+
+4. CENSORSHIP AS NATURAL TESTBED (March 2026, Harvard + Anthropic)
+Paper: "Censored LLMs as a Natural Testbed for Secret Knowledge Elicitation"
+- Chinese models (Qwen, DeepSeek) censored on Tiananmen = natural spontaneous lies
+- Probes trained on instructed deception → AUROC 0.79-0.82 on censorship lies!
+- BUT: Out-of-distribution (TruthfulQA) → drops to 0.53-0.61
+- Generalization problem confirmed
+
+IMPLICATIONS FOR DECEPTIONPROBE:
+1. Our probe SHOULD be able to distinguish hallucination from deception
+2. Omission detection is the hardest problem - dialogue training helps
+3. Censored models are a great testbed for spontaneous deception
+4. Generalization across domains remains the key challenge
