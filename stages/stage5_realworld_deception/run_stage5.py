@@ -1,5 +1,5 @@
 """
-DECEPTION PROBE - Stage 5B: Real-World Confound-Free Deception
+DECEPTION PROBE - Stage 5: Real-World Confound-Free Deception
 ================================================================
 Goal: Detect deception in real-world scenarios with ZERO prompt confounds.
 
@@ -9,7 +9,7 @@ THE KEY INSIGHT (from Stage 4):
   be honest or deceptive.
 
   Stage 4 did this with trivia (sycophancy pressure).
-  Stage 5B does this with REAL-WORLD scenarios (sales pressure).
+  Stage 5 does this with REAL-WORLD scenarios (sales pressure).
 
 HOW IT WORKS:
   1. Give the model a scenario with PRESSURE to deceive:
@@ -48,7 +48,7 @@ Layers: All 32 layers tested
 
 Usage (Colab with GPU):
     !pip install -q transformers accelerate bitsandbytes scikit-learn openai
-    %run stages/stage5b_academic_deception/run_stage5b.py
+    %run stages/stage5_realworld_deception/run_stage5.py
 
 Expected runtime: ~30-60 minutes on A100/H100
 """
@@ -79,7 +79,7 @@ np.random.seed(RANDOM_SEED)
 random.seed(RANDOM_SEED)
 
 print("=" * 60)
-print("DECEPTION PROBE - Stage 5B: Real-World Confound-Free")
+print("DECEPTION PROBE - Stage 5: Real-World Confound-Free")
 print("=" * 60)
 print(f"Model: {MODEL_NAME}")
 print(f"Testing ALL {len(ALL_LAYERS)} layers")
@@ -571,7 +571,7 @@ class NumpyEncoder(json.JSONEncoder):
         return super().default(obj)
 
 output = {
-    "stage": "Stage 5B - Real-World Confound-Free Deception",
+    "stage": "Stage 5 - Real-World Confound-Free Deception",
     "description": (
         "Real-world scenarios with IDENTICAL prompt structure. "
         "Model decides on its own whether to deceive or be honest. "
@@ -612,7 +612,7 @@ output = {
     "elapsed_seconds": time.time() - start_time,
 }
 
-with open("stage5b_results.json", "w") as f:
+with open("stage5_results.json", "w") as f:
     json.dump(output, f, indent=2, cls=NumpyEncoder)
 
 # Save example responses
@@ -636,14 +636,14 @@ for i in range(min(10, len(deceptive_data))):
         "label": "deceptive",
     })
 
-with open("stage5b_examples.json", "w") as f:
+with open("stage5_examples.json", "w") as f:
     json.dump(examples, f, indent=2, ensure_ascii=False, cls=NumpyEncoder)
 
 # ============================================================
 # FINAL SUMMARY
 # ============================================================
 print("=" * 60)
-print(f"\n  RESULTS SUMMARY (Stage 5B: Real-World Confound-Free)")
+print(f"\n  RESULTS SUMMARY (Stage 5: Real-World Confound-Free)")
 print(f"  {'='*50}")
 print(f"  Scenarios: {len(scenarios)} across {len(domain_stats)} domains")
 print(f"  Responses: {len(all_responses)} collected")
@@ -684,8 +684,7 @@ if results:
     print("  COMPARISON WITH PREVIOUS STAGES:")
     print(f"    Stage 1-3 (different prompts, trivia): 100% ← prompt confound")
     print(f"    Stage 4  (same prompt, trivia):        82.5% ← REAL signal")
-    print(f"    Stage 5  (different prompts, real):     100% ← prompt confound")
-    print(f"    Stage 5B (same prompt, real-world):     {best_acc*100:.1f}% ← THIS TEST")
+    print(f"    Stage 5  (same prompt, real-world):     {best_acc*100:.1f}% ← THIS TEST")
 
     if best_acc >= 0.75:
         print()
@@ -707,8 +706,8 @@ if results:
         print("  NO SIGNAL. Probe cannot detect deception in real-world scenarios.")
         print("  Stage 4's signal may not generalize beyond trivia.")
 
-print(f"\n  Saved stage5b_results.json and stage5b_examples.json")
+print(f"\n  Saved stage5_results.json and stage5_examples.json")
 print(f"  Total time: {time.time() - start_time:.0f}s")
 print("=" * 60)
-print("STAGE 5B COMPLETE")
+print("STAGE 5 COMPLETE")
 print("=" * 60)
