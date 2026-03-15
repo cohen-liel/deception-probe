@@ -1,0 +1,38 @@
+Stage 4 - Same-Prompt Deception Test - All 32 Layers
+Model: meta-llama/Llama-3.1-8B-Instruct
+Samples: 43 lied vs 43 resisted (balanced)
+Method: Logistic Regression on Hidden States (first generated token)
+
+Layer  0:  50.0%
+Layer  1:  61.6%
+Layer  2:  59.4%
+Layer  3:  61.7%
+Layer  4:  55.8%
+Layer  5:  66.3% **
+Layer  6:  67.5% **
+Layer  7:  67.5% **
+Layer  8:  67.5% **
+Layer  9:  61.7%
+Layer 10:  60.5%
+Layer 11:  60.5%
+Layer 12:  67.5% **
+Layer 13:  79.2% ***
+Layer 14:  80.2% ***
+Layer 15:  82.5% *** <-- BEST
+Layer 16:  80.2% ***
+Layer 17:  80.1% ***
+Layer 18:  80.1% ***
+Layer 19:  77.8% ***
+Layer 20:  76.7% ***
+Layer 21:  75.6% ***
+Layer 22:  75.6% ***
+Layer 23:  75.6% ***
+Layer 24:  78.0% ***
+Layer 25:  79.2% ***
+Layer 26:  78.0% ***
+Layer 27:  78.0% ***
+Layer 28:  78.0% ***
+Layer 29:  77.9% ***
+Layer 30:  80.4% ***
+Layer 31:  77.8% ***
+Layer 32:  76.8% ***

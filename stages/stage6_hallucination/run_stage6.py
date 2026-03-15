@@ -1,5 +1,5 @@
 """
-DECEPTION PROBE - Stage 5: Hallucination vs Lie Detection
+DECEPTION PROBE - Stage 6: Hallucination vs Lie Detection
 ==========================================================
 Goal: Can we distinguish between a model that LIES (knows the truth
       but says something else) vs a model that HALLUCINATES (doesn't
@@ -57,7 +57,7 @@ RANDOM_SEED = 42
 np.random.seed(RANDOM_SEED)
 
 print("=" * 60)
-print("DECEPTION PROBE - Stage 5: Hallucination vs Lie Detection")
+print("DECEPTION PROBE - Stage 6: Hallucination vs Lie Detection")
 print("=" * 60)
 print(f"Model: {MODEL_NAME}")
 print(f"Layer: {TARGET_LAYER}")
@@ -425,7 +425,7 @@ if "lie_vs_hallucination" in results:
 
 # Save
 output = {
-    "stage": "Stage 5 - Hallucination vs Lie Detection",
+    "stage": "Stage 6 - Hallucination vs Lie Detection",
     "model": MODEL_NAME, "layer": TARGET_LAYER,
     "model_knows": len(model_knows),
     "model_doesnt_know": len(model_doesnt_know),
@@ -450,10 +450,10 @@ class NumpyEncoder(json.JSONEncoder):
             return obj.tolist()
         return super().default(obj)
 
-with open("stage5_results.json", "w") as f:
+with open("stage6_results.json", "w") as f:
     json.dump(output, f, indent=2, cls=NumpyEncoder)
 
-print(f"\nSaved to stage5_results.json")
+print(f"\nSaved to stage6_results.json")
 print("=" * 60)
 print("STAGE 5 COMPLETE")
 print("=" * 60)
