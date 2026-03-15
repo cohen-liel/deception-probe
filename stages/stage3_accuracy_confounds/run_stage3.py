@@ -405,8 +405,21 @@ output = {
     "elapsed_seconds": time.time() - start_time,
 }
 
+# Custom encoder for numpy types
+class NumpyEncoder(json.JSONEncoder):
+    def default(self, obj):
+        if isinstance(obj, (np.integer,)):
+            return int(obj)
+        elif isinstance(obj, (np.floating,)):
+            return float(obj)
+        elif isinstance(obj, (np.bool_,)):
+            return bool(obj)
+        elif isinstance(obj, np.ndarray):
+            return obj.tolist()
+        return super().default(obj)
+
 with open("stage3_results.json", "w") as f:
-    json.dump(output, f, indent=2)
+    json.dump(output, f, indent=2, cls=NumpyEncoder)
 
 # Save example responses
 examples = []
@@ -416,7 +429,7 @@ for d in truth_data[:10]:
     examples.append({"question": d["question"], "response": d["response"], "label": "truth"})
 
 with open("stage3_examples.json", "w") as f:
-    json.dump(examples, f, indent=2, ensure_ascii=False)
+    json.dump(examples, f, indent=2, ensure_ascii=False, cls=NumpyEncoder)
 
 print(f"  Saved stage3_results.json and stage3_examples.json")
 print("=" * 60)

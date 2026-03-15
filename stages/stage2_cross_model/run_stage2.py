@@ -344,8 +344,21 @@ save_data = {
     "results": {str(k): v for k, v in results.items()},
     "elapsed_seconds": time.time() - start_time,
 }
+# Custom encoder for numpy types
+class NumpyEncoder(json.JSONEncoder):
+    def default(self, obj):
+        if isinstance(obj, (np.integer,)):
+            return int(obj)
+        elif isinstance(obj, (np.floating,)):
+            return float(obj)
+        elif isinstance(obj, (np.bool_,)):
+            return bool(obj)
+        elif isinstance(obj, np.ndarray):
+            return obj.tolist()
+        return super().default(obj)
+
 with open(output_path, "w") as f:
-    json.dump(save_data, f, indent=2)
+    json.dump(save_data, f, indent=2, cls=NumpyEncoder)
 print(f"\nSaved to {output_path}")
 print("=" * 60)
 print("STAGE 2 COMPLETE")

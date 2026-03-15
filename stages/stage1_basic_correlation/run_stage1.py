@@ -313,7 +313,7 @@ else:
             "std": float(scores.std()),
             "folds": [float(s) for s in scores],
             "p_value": float(p_value),
-            "significant": p_value < 0.05,
+            "significant": bool(p_value < 0.05),
             "null_mean": float(np.mean(null_scores)),
             "null_std": float(np.std(null_scores)),
         }
@@ -454,8 +454,34 @@ save_data = {
 
 # Save to current directory (works in both Colab and local)
 output_path = "stage1_results.json"
+
+# Convert numpy types to Python native types for JSON serialization
+def convert_numpy(obj):
+    if isinstance(obj, (np.integer,)):
+        return int(obj)
+    elif isinstance(obj, (np.floating,)):
+        return float(obj)
+    elif isinstance(obj, (np.bool_,)):
+        return bool(obj)
+    elif isinstance(obj, np.ndarray):
+        return obj.tolist()
+    return obj
+
+import json as json_module
+class NumpyEncoder(json_module.JSONEncoder):
+    def default(self, obj):
+        if isinstance(obj, (np.integer,)):
+            return int(obj)
+        elif isinstance(obj, (np.floating,)):
+            return float(obj)
+        elif isinstance(obj, (np.bool_,)):
+            return bool(obj)
+        elif isinstance(obj, np.ndarray):
+            return obj.tolist()
+        return super().default(obj)
+
 with open(output_path, "w") as f:
-    json.dump(save_data, f, indent=2)
+    json.dump(save_data, f, indent=2, cls=NumpyEncoder)
 print(f"\nResults saved to {output_path}")
 print("=" * 60)
 print("STAGE 1 COMPLETE")
