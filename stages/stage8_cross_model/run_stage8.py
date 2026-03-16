@@ -511,6 +511,56 @@ if len(model_names_with_data) >= 2:
             transfer_results[pair_name] = float(transfer_acc)
             print(f"  {source_name} -> {target_name}: {transfer_acc*100:.1f}%")
 
+    # Flip-test: for pairs with < 20% accuracy, try flipping labels
+    print(f"\n  Flip-test (checking if deception direction is inverted):")
+    flip_results = {}
+    for source_name in model_names_with_data:
+        for target_name in model_names_with_data:
+            if source_name == target_name:
+                continue
+            pair_name = f"{source_name}_to_{target_name}"
+            if transfer_results.get(pair_name, 1.0) < 0.2:
+                # Re-test with flipped labels on target
+                source = all_model_data[source_name]
+                target = all_model_data[target_name]
+                source_best = all_model_results[source_name]["within_model"]["best_layer"]
+                target_best = all_model_results[target_name]["within_model"]["best_layer"]
+
+                s_min = min(len(source["truth"]), len(source["lie"]))
+                X_s_t = np.array([d["layer_hs"][source_best] for d in source["truth"][:s_min]])
+                X_s_l = np.array([d["layer_hs"][source_best] for d in source["lie"][:s_min]])
+                X_source = np.vstack([X_s_t, X_s_l])
+                y_source = np.array([0] * s_min + [1] * s_min)
+
+                t_min = min(len(target["truth"]), len(target["lie"]))
+                X_t_t = np.array([d["layer_hs"][target_best] for d in target["truth"][:t_min]])
+                X_t_l = np.array([d["layer_hs"][target_best] for d in target["lie"][:t_min]])
+                X_target = np.vstack([X_t_t, X_t_l])
+                y_target = np.array([0] * t_min + [1] * t_min)
+                y_target_flipped = 1 - y_target  # FLIP!
+
+                pca_s = PCA(n_components=common_dim, random_state=RANDOM_SEED)
+                pca_t = PCA(n_components=common_dim, random_state=RANDOM_SEED)
+                X_source_pca = pca_s.fit_transform(StandardScaler().fit_transform(X_source))
+                X_target_pca = pca_t.fit_transform(StandardScaler().fit_transform(X_target))
+
+                scaler = StandardScaler()
+                X_source_s = scaler.fit_transform(X_source_pca)
+                X_target_s = scaler.transform(X_target_pca)
+
+                clf = LogisticRegression(max_iter=1000, random_state=RANDOM_SEED, C=1.0)
+                clf.fit(X_source_s, y_source)
+                y_pred = clf.predict(X_target_s)
+
+                flip_acc = balanced_accuracy_score(y_target_flipped, y_pred)
+                flip_results[f"{pair_name}_flipped"] = float(flip_acc)
+                original = transfer_results[pair_name]
+                print(f"    {source_name} -> {target_name}: original={original*100:.1f}%, flipped={flip_acc*100:.1f}%")
+                if flip_acc > 0.7:
+                    print(f"      >> INVERTED DIRECTION: deception signal exists but is encoded in opposite direction!")
+
+    transfer_results.update(flip_results)
+
     # Also test: train on ALL models combined, test on each
     print(f"\n  Combined training (all models):")
     for test_name in model_names_with_data:
@@ -634,6 +684,7 @@ output = {
     "questions_tested": len(questions),
     "within_model_results": all_model_results,
     "cross_model_transfer": transfer_results,
+    "flip_test_results": {k: v for k, v in transfer_results.items() if "flipped" in k},
     "elapsed_seconds": time.time() - start_time,
 }
 
