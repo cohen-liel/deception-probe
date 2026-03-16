@@ -13,7 +13,7 @@ Goal: Does the deception signal generalize across different model
 Models tested:
   - meta-llama/Llama-3.1-8B-Instruct  (baseline, already tested)
   - mistralai/Mistral-7B-Instruct-v0.3
-  - google/gemma-2-9b-it
+  - Qwen/Qwen2.5-7B-Instruct
 
 Method:
   For each model:
@@ -69,10 +69,10 @@ MODELS = [
         "probe_layers": [8, 12, 15, 16, 17, 18, 20, 24],
     },
     {
-        "name": "google/gemma-2-9b-it",
-        "short": "gemma9b",
-        "n_layers": 42,
-        "probe_layers": [10, 16, 20, 21, 22, 23, 26, 32],
+        "name": "Qwen/Qwen2.5-7B-Instruct",
+        "short": "qwen7b",
+        "n_layers": 28,
+        "probe_layers": [7, 10, 12, 13, 14, 15, 18, 21],
     },
 ]
 
