@@ -68,8 +68,36 @@ Three-way classification: **Truth vs Lie vs Hallucination**.
 
 ### Stage 7: Advanced Hallucination Detection
 
-Six methods to improve Truth vs Hallucination detection:
-multi-layer fusion, layer difference vectors, statistical features, combined PCA, hallucination direction vector, and permutation validation.
+Six methods to improve Truth vs Hallucination detection. Best result: **77.9%** using a hallucination direction vector (multi-layer), up from 67.4% baseline.
+
+### Stage 8: Cross-Model Generalization
+
+Tests whether the deception signal is **universal** or model-specific by running the same experiment on three different architectures:
+
+- **Llama-3.1-8B-Instruct** (baseline)
+- **Mistral-7B-Instruct-v0.3** (different architecture)
+- **Gemma-2-9B-IT** (different architecture + different training)
+
+Key questions: Does each model have its own deception signal? Can a probe trained on one model detect lies in another?
+
+### Stage 9: Types of Deception
+
+Tests whether different **kinds of lies** share the same internal representation:
+
+- **Sycophancy** — changing answer to agree with user
+- **Instruction conflict** — system prompt says X, model knows Y
+- **People-pleasing** — giving overly positive feedback when truth is negative
+
+Key question: Is there a single "deception direction" or does each lie type have its own signature?
+
+### Stage 10: Scale Test (70B)
+
+Runs the full experiment on **Llama-3.1-70B-Instruct** (80 layers, 8192 hidden dim) and compares with 8B results:
+
+- Does a bigger model lie more or less?
+- Is the deception signal stronger or weaker at scale?
+- Does the best layer shift proportionally with depth?
+- Implications for AI safety: are larger models harder to audit?
 
 ### Layer Profile (Stage 6)
 
@@ -90,7 +118,7 @@ Layer 0 at chance confirms the signal is **semantic**, not lexical.
 
 ### Prerequisites
 
-- Google Colab with **A100 GPU**
+- Google Colab with **A100 GPU** (H100 for Stage 10)
 - HuggingFace account with access to [Llama-3.1-8B-Instruct](https://huggingface.co/meta-llama/Llama-3.1-8B-Instruct)
 
 ### Run
@@ -108,9 +136,12 @@ import os
 os.environ["HF_TOKEN"] = "your_token_here"
 
 # Run any stage (each stage is self-contained)
-%run stages/stage4_same_prompt_test/run_stage4.py          # ~30 min
-%run stages/stage6_hallucination/run_stage6.py             # ~25 min
+%run stages/stage4_same_prompt_test/run_stage4.py          # ~30 min, GPU
+%run stages/stage6_hallucination/run_stage6.py             # ~25 min, GPU
 %run stages/stage7_hallucination_detection/run_stage7.py   # ~5 min, no GPU (uses Stage 6 data)
+%run stages/stage8_cross_model/run_stage8.py               # ~90 min, GPU (3 models)
+%run stages/stage9_deception_types/run_stage9.py           # ~15 min, GPU
+%run stages/stage10_scale_70b/run_stage10.py               # ~60 min, A100/H100 (70B model)
 ```
 
 All results are saved to `results/` automatically.
@@ -131,14 +162,17 @@ deception-probe/
 │   │   ├── run_stage5_part_b.py
 │   │   └── scenarios_dataset.json
 │   ├── stage6_hallucination/run_stage6.py
-│   └── stage7_hallucination_detection/run_stage7.py
+│   ├── stage7_hallucination_detection/run_stage7.py
+│   ├── stage8_cross_model/run_stage8.py
+│   ├── stage9_deception_types/run_stage9.py
+│   └── stage10_scale_70b/run_stage10.py
 └── results/                  ← generated at runtime
     └── FINDINGS.md           ← summary of all results
 ```
 
 ## Method
 
-- **Model**: Llama-3.1-8B-Instruct (4-bit quantized via bitsandbytes)
+- **Model**: Llama-3.1-8B-Instruct (4-bit quantized via bitsandbytes), plus Mistral-7B, Gemma-9B, and Llama-70B
 - **Probe**: Logistic Regression on hidden state activations at the first generated token
 - **Validation**: 5-fold stratified cross-validation with balanced accuracy
 - **Statistical tests**: Permutation tests (500 iterations), length baselines
