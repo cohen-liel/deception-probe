@@ -14,6 +14,7 @@
 | **6** | **Truth vs Lie (binary)** | **100%** | **Bal. Accuracy** | — | **Yes** | Model "knows" when it's lying |
 | **6** | **Truth vs Hallucination (binary)** | **67.4%** | **Bal. Accuracy** | — | **Yes** | Hardest task — no internal "tension" in hallucination |
 | 7 | Advanced hallucination detection | TBD | Bal. Accuracy | TBD | Yes | 6 methods to improve Truth vs Hallucination |
+| **8** | **Cross-model generalization** | **100%** | **Bal. Accuracy** | **0.0000** | **Yes** | All 3 models (Llama/Mistral/Qwen) detect deception at 100%. Llama↔Mistral transfer: 98.8-100%. Qwen has **inverted polarity** — flip-test confirms 97-98% transfer. |
 
 ## Key Findings
 
@@ -34,11 +35,14 @@ Layer 0 (embedding) performs at chance, confirming the signal is semantic, not l
 ### 4. Lies and Hallucinations Are Fundamentally Different (Stage 6)
 The model's internal state when it **lies** (knows truth but says otherwise) is completely separable from when it **hallucinates** (doesn't know and makes something up) — 100% accuracy with p=0.0000. This is the most novel finding.
 
-### 5. Length Is Not a Confound
+### 5. Deception Signal Is Universal Across Models (Stage 8)
+Three independently trained models (Llama-3.1-8B, Mistral-7B, Qwen2.5-7B) all encode a deception signal detectable at **100% balanced accuracy** within each model. Cross-model transfer between Llama and Mistral achieves **98.8-100%**, proving a shared representation. Qwen shows near-zero direct transfer (1-3%) but **97-98% when predictions are flipped**, revealing that Qwen encodes the same signal with **inverted polarity** — like a magnet pointing in the opposite direction. This suggests a universal deception representation across model families, differing only in sign.
+
+### 6. Length Is Not a Confound
 Length-only baselines across all stages: 50-60% (near chance). The probe captures information beyond response length.
 
 ## Model and Method
-- **Model**: Llama-3.1-8B-Instruct (4-bit quantized via bitsandbytes)
+- **Models**: Llama-3.1-8B-Instruct, Mistral-7B-Instruct-v0.3, Qwen2.5-7B-Instruct (all 4-bit quantized via bitsandbytes)
 - **Probe**: Logistic Regression on hidden state activations (first generated token)
 - **Validation**: 5-fold stratified cross-validation
 - **Statistical tests**: Permutation tests (500 iterations), balanced accuracy

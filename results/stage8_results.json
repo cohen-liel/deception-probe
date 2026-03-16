@@ -1,0 +1,165 @@
+{
+  "stage": "Stage 8 - Cross-Model Generalization",
+  "models_tested": [
+    "meta-llama/Llama-3.1-8B-Instruct",
+    "mistralai/Mistral-7B-Instruct-v0.3",
+    "Qwen/Qwen2.5-7B-Instruct"
+  ],
+  "questions_tested": 500,
+  "within_model_results": {
+    "llama8b": {
+      "within_model": {
+        "best_layer": 8,
+        "best_bal_acc": 1.0,
+        "layer_results": {
+          "8": {
+            "bal_acc": 1.0,
+            "std": 0.0
+          },
+          "12": {
+            "bal_acc": 1.0,
+            "std": 0.0
+          },
+          "15": {
+            "bal_acc": 1.0,
+            "std": 0.0
+          },
+          "16": {
+            "bal_acc": 1.0,
+            "std": 0.0
+          },
+          "17": {
+            "bal_acc": 1.0,
+            "std": 0.0
+          },
+          "18": {
+            "bal_acc": 1.0,
+            "std": 0.0
+          },
+          "20": {
+            "bal_acc": 1.0,
+            "std": 0.0
+          },
+          "24": {
+            "bal_acc": 1.0,
+            "std": 0.0
+          }
+        },
+        "p_value": 0.0,
+        "n_truth": 355,
+        "n_lie": 43,
+        "n_balanced": 43
+      }
+    },
+    "mistral7b": {
+      "within_model": {
+        "best_layer": 8,
+        "best_bal_acc": 1.0,
+        "layer_results": {
+          "8": {
+            "bal_acc": 1.0,
+            "std": 0.0
+          },
+          "12": {
+            "bal_acc": 1.0,
+            "std": 0.0
+          },
+          "15": {
+            "bal_acc": 1.0,
+            "std": 0.0
+          },
+          "16": {
+            "bal_acc": 1.0,
+            "std": 0.0
+          },
+          "17": {
+            "bal_acc": 1.0,
+            "std": 0.0
+          },
+          "18": {
+            "bal_acc": 1.0,
+            "std": 0.0
+          },
+          "20": {
+            "bal_acc": 1.0,
+            "std": 0.0
+          },
+          "24": {
+            "bal_acc": 1.0,
+            "std": 0.0
+          }
+        },
+        "p_value": 0.0,
+        "n_truth": 384,
+        "n_lie": 64,
+        "n_balanced": 64
+      }
+    },
+    "qwen7b": {
+      "within_model": {
+        "best_layer": 7,
+        "best_bal_acc": 1.0,
+        "layer_results": {
+          "7": {
+            "bal_acc": 1.0,
+            "std": 0.0
+          },
+          "10": {
+            "bal_acc": 1.0,
+            "std": 0.0
+          },
+          "12": {
+            "bal_acc": 1.0,
+            "std": 0.0
+          },
+          "13": {
+            "bal_acc": 1.0,
+            "std": 0.0
+          },
+          "14": {
+            "bal_acc": 1.0,
+            "std": 0.0
+          },
+          "15": {
+            "bal_acc": 1.0,
+            "std": 0.0
+          },
+          "18": {
+            "bal_acc": 1.0,
+            "std": 0.0
+          },
+          "21": {
+            "bal_acc": 1.0,
+            "std": 0.0
+          }
+        },
+        "p_value": 0.0,
+        "n_truth": 338,
+        "n_lie": 64,
+        "n_balanced": 64
+      }
+    }
+  },
+  "cross_model_transfer": {
+    "llama8b_to_mistral7b": 1.0,
+    "llama8b_to_qwen7b": 0.0234375,
+    "mistral7b_to_llama8b": 0.9883720930232558,
+    "mistral7b_to_qwen7b": 0.015625,
+    "qwen7b_to_llama8b": 0.011627906976744186,
+    "qwen7b_to_mistral7b": 0.03125,
+    "llama8b_to_qwen7b_flipped": 0.9765625,
+    "mistral7b_to_qwen7b_flipped": 0.984375,
+    "qwen7b_to_llama8b_flipped": 0.9883720930232558,
+    "qwen7b_to_mistral7b_flipped": 0.96875,
+    "combined_to_llama8b": 0.5465116279069767,
+    "combined_to_mistral7b": 0.171875,
+    "combined_to_qwen7b": 0.015625
+  },
+  "flip_test_results": {
+    "llama8b_to_qwen7b_flipped": 0.9765625,
+    "mistral7b_to_qwen7b_flipped": 0.984375,
+    "qwen7b_to_llama8b_flipped": 0.9883720930232558,
+    "qwen7b_to_mistral7b_flipped": 0.96875
+  },
+  "elapsed_seconds": 12.13283109664917
+}
