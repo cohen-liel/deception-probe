@@ -16,13 +16,16 @@ This project investigates whether linear probes trained on hidden state activati
 | 7 | Advanced hallucination detection | 77.9% | Yes | Multi-layer fusion improves T vs H |
 | **8** | **Cross-model generalization** | **100%** within | **Yes** | Universal signal across 3 model families |
 | **8** | **Qwen inverted polarity** | **97-98%** flipped | **Yes** | Same signal, opposite direction |
-| 9 | Types of deception | Pending | Yes | Sycophancy, instruction conflict, authority |
+| **9** | **Sycophancy detection** | **81.0%** bal. acc. | **Yes** | Each deception type detectable (67-81%) |
+| **9** | **Cross-type transfer** | **57.2%** avg | **Yes** | Different lie types use different directions (cosine ~0.05) |
 
 ### The Breakthrough Results
 
 > **Result 1 — Lie vs Hallucination:** When an LLM **lies** (knows the correct answer but says something else due to sycophantic pressure), its internal state is **completely separable** from when it **hallucinates** (genuinely doesn't know). A simple logistic regression achieves **100% accuracy** distinguishing the two (p=0.0000, 500 permutations).
 
-> **Result 2 — Universal Signal with Inverted Polarity:** Three independently trained models (Llama-8B, Mistral-7B, Qwen-7B) all encode a deception signal at **100% within-model accuracy**. Llama and Mistral share the same representation (98-100% transfer). Qwen encodes the **same signal in the opposite direction** — when predictions are flipped, transfer reaches 97-98%. This is like a magnet pointing the other way: same force, opposite pole.
+> **Result 2 — No Universal Lie Direction:** Three types of deception (sycophancy, instruction conflict, authority pressure) are each independently detectable (67-81%, all p=0.0000), but their internal representations point in **nearly orthogonal directions** (cosine similarity ~0.05). There is no single "lie direction" — each deception type has its own signature.
+
+> **Result 3 — Universal Signal with Inverted Polarity:** Three independently trained models (Llama-8B, Mistral-7B, Qwen-7B) all encode a deception signal at **100% within-model accuracy**. Llama and Mistral share the same representation (98-100% transfer). Qwen encodes the **same signal in the opposite direction** — when predictions are flipped, transfer reaches 97-98%. This is like a magnet pointing the other way: same force, opposite pole.
 
 ## Why This Matters
 
@@ -108,7 +111,22 @@ Tests whether different **kinds of lies** share the same internal representation
 - **Instruction conflict** — system prompt contains false correction
 - **Authority pressure** — "a panel of experts concluded X"
 
-Key question: Is there a single "deception direction" or does each lie type have its own signature?
+**Within-type results** (all confound-free, all p=0.0000):
+
+| Deception Type | Balanced Accuracy | Best Layer | Samples |
+|---------------|-------------------|-----------|----------|
+| Sycophancy | **81.0%** | 16 | 43 |
+| Instruction Conflict | **70.8%** | 24 | 96 |
+| Authority Pressure | **67.4%** | 20 | 81 |
+
+**Cross-type transfer** (train on A, test on B):
+
+| Transfer | Accuracy | Interpretation |
+|----------|----------|----------------|
+| Instruction → Authority | **70.4%** | Shared signal (both external pressure) |
+| All others | 47-58% | Near chance — different directions |
+
+**Cosine similarity between lie directions:** ~0.05 (nearly orthogonal). **There is no single "lie direction"** — each deception type encodes its own signature. This contradicts the assumption in prior work (e.g., Burns et al.) that there is a single "truth direction."
 
 ### Stage 10: Scale Test (70B)
 

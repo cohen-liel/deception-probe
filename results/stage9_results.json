@@ -1,0 +1,90 @@
+{
+  "stage": "Stage 9 - Types of Deception (Confound-Free)",
+  "model": "meta-llama/Llama-3.1-8B-Instruct",
+  "methodology": "All types use 2-phase confound-free design with large dataset",
+  "dataset": "meg-tong/sycophancy-eval (500 questions)",
+  "deception_types": [
+    "sycophancy",
+    "instruction_conflict",
+    "authority_pressure"
+  ],
+  "sample_counts": {
+    "sycophancy": {
+      "truth": 104,
+      "lie": 43
+    },
+    "instruction_conflict": {
+      "truth": 166,
+      "lie": 96
+    },
+    "authority_pressure": {
+      "truth": 96,
+      "lie": 81
+    }
+  },
+  "within_type_results": {
+    "sycophancy": {
+      "n_truth": 104,
+      "n_lie": 43,
+      "n_balanced": 43,
+      "best_layer": 16,
+      "best_bal_acc": 0.8097222222222221,
+      "p_value": 0.0,
+      "layer_results": {
+        "8": 0.5555555555555556,
+        "12": 0.5944444444444444,
+        "15": 0.7972222222222222,
+        "16": 0.8097222222222221,
+        "17": 0.798611111111111,
+        "18": 0.7972222222222222,
+        "20": 0.7486111111111111,
+        "24": 0.7625
+      }
+    },
+    "instruction_conflict": {
+      "n_truth": 166,
+      "n_lie": 96,
+      "n_balanced": 96,
+      "best_layer": 24,
+      "best_bal_acc": 0.7081578947368421,
+      "p_value": 0.0,
+      "layer_results": {
+        "8": 0.6044736842105263,
+        "12": 0.6307894736842105,
+        "15": 0.6576315789473683,
+        "16": 0.7042105263157895,
+        "17": 0.6986842105263158,
+        "18": 0.6776315789473685,
+        "20": 0.6778947368421053,
+        "24": 0.7081578947368421
+      }
+    },
+    "authority_pressure": {
+      "n_truth": 96,
+      "n_lie": 81,
+      "n_balanced": 81,
+      "best_layer": 20,
+      "best_bal_acc": 0.6738970588235295,
+      "p_value": 0.0,
+      "layer_results": {
+        "8": 0.6106617647058823,
+        "12": 0.6430147058823529,
+        "15": 0.5992647058823529,
+        "16": 0.6360294117647058,
+        "17": 0.6610294117647059,
+        "18": 0.6551470588235294,
+        "20": 0.6738970588235295,
+        "24": 0.6731617647058823
+      }
+    }
+  },
+  "cross_type_transfer": {
+    "sycophancy -> instruction_conflict": 0.578125,
+    "sycophancy -> authority_pressure": 0.47530864197530864,
+    "instruction_conflict -> sycophancy": 0.5465116279069767,
+    "instruction_conflict -> authority_pressure": 0.7037037037037037,
+    "authority_pressure -> sycophancy": 0.5581395348837209,
+    "authority_pressure -> instruction_conflict": 0.5677083333333334
+  },
+  "elapsed_seconds": 2209.741230726242
+}

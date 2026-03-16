@@ -17,7 +17,10 @@
 | **8** | **Cross-model (within-model)** | **100%** | **Bal. Accuracy** | **0.0000** | **Yes** | All 3 models detect deception at 100% |
 | **8** | **Cross-model (Llama↔Mistral)** | **98.8-100%** | **Bal. Accuracy** | — | **Yes** | Shared representation between Llama and Mistral |
 | **8** | **Cross-model (Qwen flipped)** | **97-98%** | **Bal. Accuracy** | — | **Yes** | Qwen has inverted polarity — same signal, opposite direction |
-| 9 | Types of deception | Pending | Bal. Accuracy | — | Yes | Sycophancy, instruction conflict, authority pressure |
+| **9** | **Sycophancy within-type** | **81.0%** | **Bal. Accuracy** | **0.0000** | **Yes** | Best layer: 16. 43 samples/class |
+| **9** | **Instruction conflict within-type** | **70.8%** | **Bal. Accuracy** | **0.0000** | **Yes** | Best layer: 24. 96 samples/class |
+| **9** | **Authority pressure within-type** | **67.4%** | **Bal. Accuracy** | **0.0000** | **Yes** | Best layer: 20. 81 samples/class |
+| **9** | **Cross-type transfer (avg)** | **57.2%** | **Bal. Accuracy** | — | **Yes** | Lie directions nearly orthogonal (cosine ~0.05) |
 
 ## Key Findings
 
@@ -64,7 +67,31 @@ Three independently trained models (Llama-3.1-8B, Mistral-7B, Qwen2.5-7B) all en
 
 **Implication:** There exists a **universal deception representation** across model families. To deploy a deception probe on a new model, you only need a small calibration set to determine the polarity — no full retraining required.
 
-### 6. Length Is Not a Confound
+### 6. No Universal Lie Direction — Each Deception Type Has Its Own Signature (Stage 9)
+
+Three types of deception were tested, all using a confound-free 2-phase design:
+
+| Deception Type | Balanced Accuracy | Best Layer | Lie Rate | Samples |
+|---------------|-------------------|-----------|----------|----------|
+| Sycophancy | **81.0%** | 16 | 29.3% | 43 |
+| Instruction Conflict | **70.8%** | 24 | 36.6% | 96 |
+| Authority Pressure | **67.4%** | 20 | 45.8% | 81 |
+
+All three are statistically significant (p=0.0000). However, the **cosine similarity** between their lie direction vectors is nearly zero:
+
+| Pair | Cosine Similarity |
+|------|------------------|
+| Sycophancy vs Instruction Conflict | 0.036 |
+| Sycophancy vs Authority Pressure | 0.017 |
+| Instruction Conflict vs Authority Pressure | 0.111 |
+
+**Interpretation:** The lie directions are **nearly orthogonal** — each deception type occupies its own subspace in the hidden state. There is no single "truth direction" or "lie direction" as assumed by prior work (Burns et al., 2023).
+
+**Partial exception:** A probe trained on instruction conflict transfers to authority pressure at **70.4%** accuracy, suggesting these two types (both involving external authority/instructions) share some signal. Sycophancy (social pressure) is distinct from both.
+
+**Implication:** A practical deception detector would need either (a) a multi-probe system with one probe per deception type, or (b) a multi-dimensional probe that captures multiple lie directions simultaneously.
+
+### 7. Length Is Not a Confound
 
 Length-only baselines across all stages: 50-60% (near chance). The probe captures information beyond response length. This is verified in every confound-free stage.
 
@@ -109,13 +136,13 @@ Length-only baselines across all stages: 50-60% (near chance). The probe capture
 
 | Stage | Status | What's Needed |
 |-------|--------|--------------|
-| Stage 8 v3 | Code ready, needs re-run | Fresh GPU runtime, ~60 min |
-| Stage 9 | Code ready, never executed | Fresh GPU runtime, ~40 min |
+| Stage 8 v3 | Code ready, needs re-run with new controls | Fresh GPU runtime, ~60 min |
 | Stage 10 | Code ready, never executed | A100 80GB GPU, ~60 min |
 
 ## Open Questions
 
 1. **Why does Qwen have inverted polarity?** Is it due to training data, architecture, or RLHF alignment? Testing more models would help.
-2. **Does the signal scale with model size?** Stage 10 (70B) will test this.
-3. **Can we improve Truth vs Hallucination?** Stage 7 reached 78% — can we do better?
-4. **Do different lie types share a direction?** Stage 9 will test cross-type transfer.
+2. **Why are lie directions orthogonal?** Stage 9 shows cosine ~0.05 between deception types. Is this because different types activate different circuits, or is it an artifact of the probe methodology?
+3. **Can a multi-dimensional probe capture all lie types?** Instead of a single direction, use PCA to find the top-k lie directions and build a combined detector.
+4. **Does the signal scale with model size?** Stage 10 (70B) will test this.
+5. **Can we improve Truth vs Hallucination?** Stage 7 reached 78% — can we do better?
