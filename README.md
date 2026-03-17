@@ -78,7 +78,10 @@ deception-probe/
 │   ├── 01_baseline_confounded/        # Exp 1: Baseline with prompt confound
 │   │   └── run.py
 │   ├── 02_confound_free_detection/    # Exp 2: Core same-prompt detection
-│   │   └── run.py
+│   │   ├── step2a_trivia.py           # Phase A: Trivia sycophancy
+│   │   ├── step2b_collect_realworld.py# Phase B: Collect real-world scenarios
+│   │   ├── step2c_analyze_realworld.py# Phase B: Labeling & probing
+│   │   └── scenarios.json             # 459 professional scenarios
 │   ├── 03_lie_vs_hallucination/       # Exp 3: Lie vs. hallucination separation
 │   │   └── run.py
 │   ├── 04_cross_model_transfer/       # Exp 4: Cross-model generalization
@@ -89,13 +92,8 @@ deception-probe/
 │   │   ├── logit_lens.py              # 6a: Layer-by-layer prediction tracking
 │   │   ├── activation_patching.py     # 6b: Causal intervention
 │   │   └── attention_analysis.py      # 6c: Sycophancy attention heads
-│   ├── 07_visualizations/             # Exp 7: Publication-quality figures
-│   │   └── generate_plots.py
-│   └── 08_realworld_deception/        # Exp 8: Real-world deception across 35 domains
-│       ├── step1_collect.py           # Collect responses + hidden states
-│       ├── step2_label.py             # Label responses (disclosed vs. concealed)
-│       ├── step3_probe.py             # Train probe + per-domain analysis
-│       └── scenarios.json             # 459 professional scenarios
+│   └── 07_visualizations/             # Exp 7: Publication-quality figures
+│       └── generate_plots.py
 ├── docs/                              # Knowledge base and literature review
 │   ├── PROJECT_CONTEXT.md             # Master context for AI sessions
 │   ├── literature_review.md           # Comprehensive literature review
@@ -119,9 +117,11 @@ deception-probe/
 
 ### Experiment 02 — Confound-Free Detection ⭐
 
-**Purpose:** The core experiment. Same prompt for both conditions.
+**Purpose:** The core experiment. Detects deception using identical prompts for both conditions. Split into three steps:
 
-**Key result:** ~82% balanced accuracy at Layer 16 (p < 0.001). Layer 0: ~50%. Length baseline: ~50%.
+- **Step 2A (Trivia):** Uses trivia questions with sycophantic pressure. Achieves ~82% balanced accuracy at Layer 16 (p < 0.001).
+- **Step 2B (Real-World Collection):** Tests 459 professional scenarios across 35 domains (sales, medical, finance, etc.). The model receives one identical prompt template and decides on its own whether to disclose or conceal a problem. Saves hidden states.
+- **Step 2C (Real-World Analysis):** Labels the responses from 2B, trains probes, and tests **cross-phase transfer** (training on trivia lies and testing on real-world concealment) to prove the deception signal is universal.
 
 ### Experiment 03 — Lie vs. Hallucination
 
@@ -153,23 +153,6 @@ Provides **causal** evidence by replacing hidden states from a truthful run into
 
 #### 6c — Attention Pattern Analysis
 Identifies specific attention heads that attend more to the user's pressure tokens when the model lies vs. when it resists. These "sycophancy heads" route information from the pressure to the output.
-
-### Experiment 08 — Real-World Deception Scenarios ⭐
-
-**Purpose:** Move beyond trivia to test deception detection in realistic professional scenarios — sales, medical, finance, legal, and 31 more domains. This simulates what happens when AI agents operate with misaligned incentives.
-
-**Design:** 459 scenarios across 35 domains. Each scenario has a hidden problem the model "knows" about (e.g., a car with a coolant leak). The model receives **one identical prompt template** for all scenarios — only the situation context changes. The model decides **on its own** whether to disclose or conceal the problem. No instruction to lie.
-
-**3-step workflow:**
-1. `step1_collect.py` — Run all 459 scenarios, save responses + hidden states from all layers
-2. `step2_label.py` — Label each response as DISCLOSED (truth) or CONCEALED (lie) using an LLM judge
-3. `step3_probe.py` — Train probes and analyze results
-
-**Key analyses:**
-- Per-layer probe accuracy (which layer best separates truth/lie?)
-- Permutation test (p < 0.001 significance)
-- Per-domain detection accuracy (is medical deception easier to detect than sales?)
-- Cross-domain transfer (train on sales, test on medical — does it generalize?)
 
 ---
 
@@ -206,7 +189,12 @@ os.environ["HF_TOKEN"] = "your_token_here"
 
 # 3. Run experiments (recommended order)
 %run experiments/01_baseline_confounded/run.py           # ~15 min — shows the confound
-%run experiments/02_confound_free_detection/run.py       # ~25 min — core result
+
+# Experiment 02 — Core Confound-Free Detection (Trivia + Real-World)
+%run experiments/02_confound_free_detection/step2a_trivia.py              # ~25 min
+%run experiments/02_confound_free_detection/step2b_collect_realworld.py   # ~90 min
+%run experiments/02_confound_free_detection/step2c_analyze_realworld.py   # ~15 min
+
 %run experiments/03_lie_vs_hallucination/run.py           # ~30 min — lie vs hallucination
 %run experiments/04_cross_model_transfer/run.py           # ~60 min — cross-model
 %run experiments/05_deception_types/run.py                # ~40 min — deception types
@@ -214,11 +202,6 @@ os.environ["HF_TOKEN"] = "your_token_here"
 %run experiments/06_mechanistic_analysis/activation_patching.py  # ~30 min — causal evidence
 %run experiments/06_mechanistic_analysis/attention_analysis.py   # ~20 min — sycophancy heads
 %run experiments/07_visualizations/generate_plots.py             # ~1 min  — generate figures
-# Experiment 08 — Real-World Scenarios (3-step workflow)
-%run experiments/08_realworld_deception/step1_collect.py          # ~90 min — collect responses + hidden states
-# After step1, download results/exp08_responses.json and send for labeling
-%run experiments/08_realworld_deception/step2_label.py             # ~5 min  — auto-label with LLM judge
-%run experiments/08_realworld_deception/step3_probe.py             # ~10 min — train probes + analysis
 ```
 
 Results are saved as JSON files in the `results/` directory.
@@ -238,7 +221,7 @@ Results are saved as JSON files in the `results/` directory.
 ## Dataset
 
 - [meg-tong/sycophancy-eval](https://huggingface.co/datasets/meg-tong/sycophancy-eval) — TriviaQA-based sycophancy evaluation dataset containing matched neutral and sycophantic prompts with verified correct and incorrect answers (Exp 01–05).
-- **scenarios.json** — 459 custom real-world professional scenarios across 35 domains (Sales, Medical, Finance, Legal, etc.) with ground truth, honest instructions, and deceptive instructions (Exp 08).
+- **scenarios.json** — 459 custom real-world professional scenarios across 35 domains (Sales, Medical, Finance, Legal, etc.) with ground truth, honest instructions, and deceptive instructions (Exp 02B/02C).
 
 ---
 

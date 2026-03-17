@@ -1,6 +1,6 @@
 # Project Context — Read This First
 
-**Last updated:** March 17, 2026 (v5 — added Experiment 08: Real-World Deception Scenarios with 3-step workflow)  
+**Last updated:** March 17, 2026 (v6 — restructured Experiment 02 to unify Trivia and Real-World Scenarios)  
 **Purpose:** This file contains all accumulated context about this research project. When starting a new session, read this file first to avoid re-doing research.
 
 ---
@@ -18,11 +18,13 @@
 
 | Experiment | Result | Significance |
 |-----------|--------|-------------|
-| 02: Confound-free detection | **82.5% balanced accuracy** at layer 16 (Llama-3.1-8B) | Proves deception signal exists even with identical prompts |
+| 02A: Trivia Sycophancy | **82.5% balanced accuracy** at layer 16 (Llama-3.1-8B) | Proves deception signal exists even with identical prompts |
 | 03: Lie vs. hallucination | **100% separation** (AUC = 1.0) | Model's internal state when lying is completely different from hallucinating |
 | 04: Cross-model transfer | Transfers across Llama/Mistral/Gemma; **Qwen is reversed** | Signal is partially universal; Qwen anomaly is interesting |
 | 05: Deception types | Sycophancy, instruction conflict, authority pressure are **orthogonal** | The *probing method* is universal; the model uses distinct subspaces per pressure type |
 | Controls | Layer 0 = 50%, Length baseline = 50%, Permutation p < 0.001 | Robust controls eliminate confounds |
+
+*(Note: Results for Experiment 02B/02C — Real-World Scenarios and Cross-Phase Transfer — are pending the next run on GPU.)*
 
 ---
 
@@ -37,6 +39,10 @@ deception-probe/
 ├── experiments/
 │   ├── 01_baseline_confounded/        # Shows the prompt confound problem
 │   ├── 02_confound_free_detection/    # Core experiment (same prompt, different behavior)
+│   │   ├── step2a_trivia.py           # Phase A: Trivia sycophancy (self-contained)
+│   │   ├── step2b_collect_realworld.py# Phase B: Run 459 scenarios, save responses + vectors
+│   │   ├── step2c_analyze_realworld.py# Phase B: Label responses, train probes, cross-phase transfer
+│   │   └── scenarios.json             # 459 professional scenarios across 35 domains
 │   ├── 03_lie_vs_hallucination/       # Separating lies from hallucinations
 │   ├── 04_cross_model_transfer/       # Cross-model generalization
 │   ├── 05_deception_types/            # Sycophancy, instruction conflict, authority pressure
@@ -44,13 +50,8 @@ deception-probe/
 │   │   ├── logit_lens.py              # Traces WHERE truth gets overridden layer by layer
 │   │   ├── activation_patching.py     # Causal proof of which layers cause deception
 │   │   └── attention_analysis.py      # Which attention heads attend to sycophantic pressure
-│   ├── 07_visualizations/             # Publication-quality figures
-│   │   └── generate_plots.py          # Generates all plots from experiment results
-│   └── 08_realworld_deception/        # Real-world deception across 35 professional domains
-│       ├── step1_collect.py           # Collect responses + hidden states (uniform prompt)
-│       ├── step2_label.py             # Label responses as DISCLOSED/CONCEALED (LLM judge)
-│       ├── step3_probe.py             # Train probes + per-domain + cross-domain analysis
-│       └── scenarios.json             # 459 professional scenarios across 35 domains
+│   └── 07_visualizations/             # Publication-quality figures
+│       └── generate_plots.py          # Generates all plots from experiment results
 ├── docs/
 │   ├── PROJECT_CONTEXT.md             # THIS FILE — read first in every session
 │   ├── literature_review.md           # Comprehensive literature review (6 sections)
@@ -67,14 +68,14 @@ deception-probe/
 ### 4.1 The Confound Problem (Why This Work Is Novel)
 Prior work (Azaria & Mitchell 2023) used different prompts for truth vs. lie conditions. This means the probe might detect "prompt style" rather than "deception." Our key innovation: **identical prompts** for both conditions. The model answers truthfully in Phase A, then we add sycophantic pressure using the same prompt template, and the model lies. Since prompts are identical, any signal in hidden states must reflect the deception itself.
 
-### 4.2 Why Logistic Regression (Not Deep Probes)
+### 4.2 Real-World Scenarios vs. Trivia (The Exp 02 Unification)
+Trivia questions (Step 2A) are clean and verifiable but lack real-world relevance. Professional scenarios (Step 2B/2C) simulate real AI agent deployments (sales, medical, legal) where the agent "knows" a problem but must decide whether to disclose it. By unifying these under Experiment 02 and performing **cross-phase transfer** (training on trivia lies, testing on real-world concealment), we aim to prove the deception signal is universal across both factual lies and strategic concealment.
+
+### 4.3 Why Logistic Regression (Not Deep Probes)
 Following Belinkov (2022) "Probing Classifiers: Promises, Shortcomings, and Advances" — simpler probes are more interpretable and less likely to learn spurious patterns. If a linear probe can detect deception, the signal must be linearly encoded.
 
-### 4.3 Why Layer 16 Is Optimal
+### 4.4 Why Layer 16 Is Optimal
 In Llama-3.1-8B (32 layers), layer 16 is the middle layer where semantic processing peaks. This aligns with Orgad & Belinkov (ICLR 2025) finding that truthfulness encoding concentrates in middle-to-late layers.
-
-### 4.4 Why 43 Samples Is Sufficient
-Small sample size is a valid concern. Our defense: (1) Permutation test with 500 iterations gives p < 0.001; (2) Layer 0 baseline at 50% proves no leakage; (3) Length baseline at 50% proves no artifact. However, **scaling to 200+ samples is a priority for publication.**
 
 ---
 
@@ -84,20 +85,18 @@ Small sample size is a valid concern. Our defense: (1) Permutation test with 500
 - **Status:** Sent him a PDF summary. Waiting for response.
 - **Email:** belinkov@technion.ac.il
 - **Why him:** World expert on probing classifiers. Co-authored ROME (NeurIPS 2022). Latest paper "LLMs Know More Than They Show" (ICLR 2025) directly validates our approach.
-- **His lab's relevant papers:** Probing survey (2022), ROME (2022), ICLR 2025 truthfulness, HACK hallucination, Sparse Feature Circuits, CRISP.
 
 ### Omer Ben-Porat (Technion, Data Science)
 - **Status:** Met on March 17, 2026. He is skeptical that models can "lie" — believes it's just insufficient training / sycophancy bias.
 - **His recommendation:** Referred us to Haggai Maron and Yftah Ziser.
-- **Assessment:** Not the right advisor for this specific project, but useful connection.
 
 ### Yftah Ziser (NVIDIA Research Israel)
-- **Status:** Not yet contacted. Referred by Ben-Porat.
+- **Status:** Next contact target.
 - **Why him:** Works on truthfulness in LLMs, probing representations, spectral editing of activations. Very relevant.
 - **Website:** https://yftah89.github.io/
 
 ### Haggai Maron (Technion CS, NVIDIA Research)
-- **Status:** Not yet contacted. Referred by Ben-Porat.
+- **Status:** Referred by Ben-Porat.
 - **Why him:** Strong in geometric deep learning and equivariant networks. Less directly relevant but high-profile.
 - **Website:** https://haggaim.github.io/
 
@@ -118,61 +117,26 @@ Small sample size is a valid concern. Our defense: (1) Permutation test with 500
 4. Orgad & Belinkov (ICLR 2025) — Models encode truth internally but output falsehoods
 5. Wang et al. (ICML 2025) — Deception vectors extracted from reasoning models
 
-### Key Papers Critiquing Our Position (Must Address)
-1. Levinstein & Herrmann (2024) — "Still No Lie Detector" — probes don't generalize
-2. Berger (2026) — Deception ≠ lying; models can deceive without lying
-3. Belinkov (2022) — Probing classifiers have known shortcomings
-
 ---
 
 ## 7. Code Review & Bug Fixes
 
-### v2 (March 17, 2026) — First review
-Claude performed a code review and identified several issues. All have been fixed:
+### v2-v4 (March 17, 2026) — Core Probing Infrastructure
+Fixed data leakage (Pipeline), improved answer matching (negation detection, proximity checks), added LLM-based answer matching fallback, fixed token selection (first_gen vs last_prompt vs answer_token), and resolved dtype issues for mechanistic analysis.
 
-| Bug | Severity | Fix |
-|-----|----------|-----|
-| Data leakage: StandardScaler fit on full dataset before CV | Critical | Replaced with sklearn.Pipeline (scaler inside CV) |
-| Permutation test: scaler re-fit on shuffled labels | Critical | Pipeline ensures scaler is fit per-fold |
-| Answer matching: false positives on partial matches | Medium | Multi-level matching (exact > all-significant-words) |
-| Cosine similarity: no random baseline comparison | Medium | Added random_cosine_baseline() function |
-| Procrustes: fitted on all questions including test | Medium | Now fitted only on shared questions |
-| Cross-question metric: accuracy instead of balanced_accuracy | Medium | Fixed to balanced_accuracy_score |
-| Logit Lens: crash on quantized models | Medium | Safe lm_head access with fallback |
-| Dead code: unused Procrustes in exp04 | Low | Removed |
-
-### v3 (March 17, 2026) — Second review
-A second review identified 4 additional issues. All fixed:
-
-| Issue | Severity | Fix |
-|-------|----------|-----|
-| Heuristic matching: "I don't think it's X" counted as match for X | Medium | Added negation detection with regex patterns (10+ patterns) |
-| Token selection: only first generated token extracted | Medium | Added 3 extraction modes: first_gen_token, last_prompt_token, answer_token |
-| 4-bit quantization noise in mechanistic analysis | Medium | Added `use_bfloat16=True` option with warning when both flags set |
-| Orthogonality misinterpreted as "no deception signal" | Low | Clarified: probing *method* is universal, *directions* are type-specific |
-
-### v4 (March 17, 2026) — Third review
-A third review confirmed most v2/v3 fixes are in place and identified remaining issues. All fixed:
-
-| Issue | Severity | Fix |
-|-------|----------|-----|
-| Answer matching: word-level match too loose ("Peter" matches "Peter Principle") | Medium | Added proximity check: all significant words must appear within 200-char window |
-| Answer matching: no LLM-based validation option | Medium | Added `check_answer_match_llm()` using GPT-4.1-nano as external grader |
-| Attention analysis: tokenization mismatch (BPE context-dependent tokens) | Medium | 3-strategy approach: token sliding window → space-prefixed variants → character-level offset mapping |
-| Activation patching: sequence length mismatch between neutral/syco prompts | Medium | Documented and ensured patching always at position -1 with explicit dtype casting |
-| Activation patching: dtype mismatch in hook injection | Low | Added `.to(dtype=h.dtype)` in hook function |
+### v5-v6 (March 17, 2026) — Real-World Unification
+Added 459 real-world scenarios. Restructured Experiment 02 to include both Phase A (Trivia) and Phase B (Real-World) to test cross-phase transfer. Deleted the redundant Experiment 08 folder.
 
 ---
 
 ## 8. Next Steps (Priority Order)
 
-1. **Run Experiment 06 (Mechanistic Analysis)** on GPU — Logit Lens, Activation Patching, Attention Analysis. Use `use_bfloat16=True` for best results.
-2. **Run Experiment 07 (Visualizations)** — generate publication-quality figures
-3. **Scale dataset** from 43 to 200+ samples
+1. **Run Experiment 02 (Steps 2A, 2B, 2C)** on GPU to get the new real-world and cross-phase transfer results.
+2. **Run Experiment 06 (Mechanistic Analysis)** on GPU — Logit Lens, Activation Patching, Attention Analysis. Use `use_bfloat16=True` for best results.
+3. **Run Experiment 07 (Visualizations)** — generate publication-quality figures
 4. **Contact Yftah Ziser** with summary + GitHub link
 5. **Wait for Belinkov's response** — follow up if no reply in 1 week
 6. **Write paper draft** — target venue: EMNLP 2026 or NeurIPS 2026
-7. **Future:** Explore SAE-based feature discovery (requires collaboration with Belinkov's lab)
 
 ---
 
