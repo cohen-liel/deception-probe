@@ -39,6 +39,10 @@ EXPECTED RESULTS:
     Layer 0: ~50%, Length baseline: ~50%
 
 RUNTIME: ~25 minutes on A100
+
+CHANGELOG:
+    v2 (2026-03-17): Fixed cross-question metric to use balanced_accuracy
+        instead of accuracy. Uses Pipeline to prevent data leakage.
 """
 
 import sys, os
@@ -47,6 +51,11 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", ".."))
 import numpy as np
 import torch
 import time
+
+from sklearn.pipeline import Pipeline
+from sklearn.preprocessing import StandardScaler
+from sklearn.linear_model import LogisticRegression
+from sklearn.metrics import balanced_accuracy_score
 
 from src.utils import (
     setup_logger,
@@ -173,13 +182,10 @@ def main():
     )
     log.info(f"  Length-only baseline: {len_acc*100:.1f}%")
 
-    # Cross-question generalization
+    # Cross-question generalization (FIX: uses balanced_accuracy, Pipeline)
     half = min_n // 2
     cross_q = {}
     if half >= 5:
-        from sklearn.preprocessing import StandardScaler
-        from sklearn.linear_model import LogisticRegression
-
         for layer in TARGET_LAYERS:
             X_lied = np.array([d["hs"][layer] for d in lied_data[:min_n]])
             X_res = np.array([d["hs"][layer] for d in resisted_data[:min_n]])
@@ -189,12 +195,17 @@ def main():
             X_test = np.vstack([X_lied[half:min_n], X_res[half:min_n]])
             y_test = np.array([1] * (min_n - half) + [0] * (min_n - half))
 
-            scaler = StandardScaler()
-            clf = LogisticRegression(max_iter=1000, random_state=RANDOM_SEED)
-            clf.fit(scaler.fit_transform(X_train), y_train)
-            cross_q[layer] = float(clf.score(scaler.transform(X_test), y_test))
+            pipe = Pipeline([
+                ("scaler", StandardScaler()),
+                ("clf", LogisticRegression(
+                    max_iter=1000, random_state=RANDOM_SEED, class_weight="balanced"
+                )),
+            ])
+            pipe.fit(X_train, y_train)
+            y_pred = pipe.predict(X_test)
+            cross_q[layer] = float(balanced_accuracy_score(y_test, y_pred))
 
-        log.info("  Cross-question generalization:")
+        log.info("  Cross-question generalization (balanced accuracy):")
         for layer in TARGET_LAYERS:
             if layer in cross_q:
                 log.info(f"    Layer {layer:2d}: {cross_q[layer]*100:.1f}%")
@@ -235,7 +246,7 @@ def main():
         "best_accuracy": best_acc,
         "layer_0_accuracy": layer0_acc,
         "results_per_layer": {str(k): v for k, v in results.items()},
-        "cross_question": {str(k): v for k, v in cross_q.items()},
+        "cross_question_balanced": {str(k): v for k, v in cross_q.items()},
         "elapsed_seconds": time.time() - start,
     }
     save_results(output, "results/exp02_confound_free.json")

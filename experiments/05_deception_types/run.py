@@ -26,15 +26,16 @@ DESIGN:
        Model either defers to authority (lie) or gives truth.
 
     For all types:
-        Phase A: Ask neutrally → establish what model knows
-        Phase B: Apply pressure → see if model changes answer
+        Phase A: Ask neutrally -> establish what model knows
+        Phase B: Apply pressure -> see if model changes answer
         Probe trained ONLY on Phase B hidden states
 
 KEY ANALYSIS:
     - Within-type detection accuracy
     - Cross-type transfer (train on type A, test on type B)
     - Cosine similarity between lie direction vectors
-    - If orthogonal → no single "lie direction" exists
+    - Random cosine baseline (expected ~0 in high dimensions)
+    - If orthogonal -> no single "lie direction" exists
 
 DATASET: meg-tong/sycophancy-eval (answer.jsonl)
 MODEL:   meta-llama/Llama-3.1-8B-Instruct (4-bit quantized)
@@ -48,6 +49,11 @@ EXPECTED RESULTS:
     - Cosine similarity: ~0.05 (nearly orthogonal)
 
 RUNTIME: ~40 minutes on A100
+
+CHANGELOG:
+    v2 (2026-03-17): Added random cosine baseline for proper comparison.
+        Fixed cross-type transfer to use Pipeline and balanced_accuracy.
+        Added confidence intervals for cosine similarity.
 """
 
 import sys, os
@@ -59,6 +65,8 @@ import time
 
 from sklearn.linear_model import LogisticRegression
 from sklearn.preprocessing import StandardScaler
+from sklearn.pipeline import Pipeline
+from sklearn.metrics import balanced_accuracy_score
 
 from src.utils import (
     setup_logger,
@@ -68,6 +76,7 @@ from src.utils import (
     check_answer_match,
     train_probe,
     permutation_test,
+    random_cosine_baseline,
     save_results,
 )
 
@@ -215,7 +224,7 @@ def main():
 
     # ── Within-type probes ─────────────────────────────────────────────
     log.info("\nWithin-type probes...")
-    results = {"within_type": {}, "cross_type": {}, "cosine_similarity": {}}
+    results = {"within_type": {}, "cross_type": {}, "cosine_similarity": {}, "random_cosine_baseline": {}}
     lie_directions = {}
 
     for dtype, data in deception_types.items():
@@ -244,12 +253,14 @@ def main():
         y = np.array([1] * min_n + [0] * min_n)
         perm = permutation_test(X, y, best_acc, N_PERMUTATIONS, random_seed=RANDOM_SEED)
 
-        # Extract lie direction (classifier weights)
-        scaler = StandardScaler()
-        X_s = scaler.fit_transform(X)
-        clf = LogisticRegression(max_iter=1000, random_state=RANDOM_SEED)
-        clf.fit(X_s, y)
-        lie_directions[dtype] = clf.coef_[0] / np.linalg.norm(clf.coef_[0])
+        # Extract lie direction (classifier weights) using Pipeline
+        pipe = Pipeline([
+            ("scaler", StandardScaler()),
+            ("clf", LogisticRegression(max_iter=1000, random_state=RANDOM_SEED, class_weight="balanced")),
+        ])
+        pipe.fit(X, y)
+        coef = pipe.named_steps["clf"].coef_[0]
+        lie_directions[dtype] = coef / np.linalg.norm(coef)
 
         results["within_type"][dtype] = {
             "best_layer": best_layer,
@@ -262,12 +273,35 @@ def main():
     # ── Cosine similarity between lie directions ───────────────────────
     log.info("\nCosine similarity between lie directions...")
     types_with_dirs = list(lie_directions.keys())
+
+    # Compute random baseline for comparison
+    if types_with_dirs:
+        dim = len(lie_directions[types_with_dirs[0]])
+        baseline = random_cosine_baseline(dim, n_pairs=10000, random_seed=RANDOM_SEED)
+        results["random_cosine_baseline"] = baseline
+        log.info(f"  Random baseline (dim={dim}): mean={baseline['expected_cosine']:.4f}, "
+                 f"std={baseline['std']:.4f}, theoretical_std={baseline['theoretical_std']:.4f}")
+
     for i in range(len(types_with_dirs)):
         for j in range(i + 1, len(types_with_dirs)):
             t1, t2 = types_with_dirs[i], types_with_dirs[j]
             cos = float(np.dot(lie_directions[t1], lie_directions[t2]))
-            results["cosine_similarity"][f"{t1}_vs_{t2}"] = cos
-            log.info(f"  {t1} vs {t2}: cosine = {cos:.3f}")
+
+            # Is this significantly different from random?
+            if types_with_dirs:
+                z_score = (cos - baseline["expected_cosine"]) / baseline["std"]
+                significant = abs(z_score) > 1.96  # 95% CI
+            else:
+                z_score = 0.0
+                significant = False
+
+            results["cosine_similarity"][f"{t1}_vs_{t2}"] = {
+                "cosine": cos,
+                "z_score": float(z_score),
+                "significant_vs_random": significant,
+            }
+            sig_str = "SIGNIFICANT" if significant else "not significant"
+            log.info(f"  {t1} vs {t2}: cosine = {cos:.3f} (z={z_score:.2f}, {sig_str})")
 
     # ── Cross-type transfer ────────────────────────────────────────────
     log.info("\nCross-type transfer...")
@@ -297,13 +331,18 @@ def main():
             ])
             y_test = np.array([1] * min_tgt + [0] * min_tgt)
 
-            scaler = StandardScaler()
-            clf = LogisticRegression(max_iter=1000, random_state=RANDOM_SEED)
-            clf.fit(scaler.fit_transform(X_train), y_train)
-            acc = balanced_accuracy_score(y_test, clf.predict(scaler.transform(X_test)))
+            pipe = Pipeline([
+                ("scaler", StandardScaler()),
+                ("clf", LogisticRegression(
+                    max_iter=1000, random_state=RANDOM_SEED, class_weight="balanced"
+                )),
+            ])
+            pipe.fit(X_train, y_train)
+            y_pred = pipe.predict(X_test)
+            acc = balanced_accuracy_score(y_test, y_pred)
 
-            results["cross_type"][f"{src_type}→{tgt_type}"] = float(acc)
-            log.info(f"  {src_type}→{tgt_type}: {acc*100:.1f}%")
+            results["cross_type"][f"{src_type}->{tgt_type}"] = float(acc)
+            log.info(f"  {src_type}->{tgt_type}: {acc*100:.1f}%")
 
     # Save
     output = {

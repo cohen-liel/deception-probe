@@ -85,13 +85,21 @@ deception-probe/
 │   │   └── run.py
 │   ├── 05_deception_types/            # Exp 5: Sycophancy vs. instruction vs. authority
 │   │   └── run.py
-│   └── 06_mechanistic_analysis/       # Exp 6: WHERE and WHY the lie originates
-│       ├── logit_lens.py              # 6a: Layer-by-layer prediction tracking
-│       ├── activation_patching.py     # 6b: Causal intervention
-│       └── attention_analysis.py      # 6c: Sycophancy attention heads
-├── stages/                            # Legacy experiment code (original stages)
+│   ├── 06_mechanistic_analysis/       # Exp 6: WHERE and WHY the lie originates
+│   │   ├── logit_lens.py              # 6a: Layer-by-layer prediction tracking
+│   │   ├── activation_patching.py     # 6b: Causal intervention
+│   │   └── attention_analysis.py      # 6c: Sycophancy attention heads
+│   └── 07_visualizations/             # Exp 7: Publication-quality figures
+│       └── generate_plots.py
+├── docs/                              # Knowledge base and literature review
+│   ├── PROJECT_CONTEXT.md             # Master context for AI sessions
+│   ├── literature_review.md           # Comprehensive literature review
+│   ├── paper_catalog.md               # 50+ papers organized by category
+│   ├── methodology_decisions.md       # Design decisions and rationale
+│   └── meeting_notes.md               # Meeting notes and contacts
 └── results/                           # Output directory (auto-created)
-    └── *.json                         # Experiment results
+    ├── *.json                         # Experiment results
+    └── figures/                       # Publication-quality plots
 ```
 
 ---
@@ -128,7 +136,7 @@ deception-probe/
 
 **Key result:** Sycophancy, instruction conflict, and authority pressure produce nearly orthogonal lie directions (cosine similarity ~0.05). There is no single "truth direction" — contradicting the assumption of Burns et al. (2023) CCS.
 
-### Experiment 06 — Mechanistic Analysis 🔬
+### Experiment 06 — Mechanistic Analysis
 
 **Purpose:** Where in the network does the lie originate, and which components are responsible?
 
@@ -180,6 +188,7 @@ os.environ["HF_TOKEN"] = "your_token_here"
 %run experiments/06_mechanistic_analysis/logit_lens.py    # ~20 min — where lies originate
 %run experiments/06_mechanistic_analysis/activation_patching.py  # ~30 min — causal evidence
 %run experiments/06_mechanistic_analysis/attention_analysis.py   # ~20 min — sycophancy heads
+%run experiments/07_visualizations/generate_plots.py             # ~1 min  — generate figures
 ```
 
 Results are saved as JSON files in the `results/` directory.
@@ -212,6 +221,16 @@ Results are saved as JSON files in the `results/` directory.
 - Marks & Tegmark (2024). *The Geometry of Truth.* ICLR 2024.
 - Wang et al. (2025). *How to Lie: Probing and Steering Deception in LLMs.* arXiv:2506.04909.
 - Simhi et al. (2025). *HACK: Hallucination-Aware Categorization of Knowledge.* ICLR 2025.
+
+---
+
+## Methodology Notes
+
+- **No data leakage:** All probes use `sklearn.Pipeline` (StandardScaler + LogisticRegression), ensuring the scaler is fit only on training folds during cross-validation.
+- **Balanced accuracy:** All metrics use `balanced_accuracy_score` to handle class imbalance correctly.
+- **Robust answer matching:** Multi-level matching strategy (exact substring > all significant words) to avoid false positives.
+- **Random cosine baseline:** Cosine similarity between lie directions is compared against the expected similarity of random unit vectors in the same dimensionality.
+- **Procrustes on shared questions:** Cross-model alignment is fitted only on questions that both models answered, preventing information leakage.
 
 ---
 

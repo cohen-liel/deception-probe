@@ -19,6 +19,7 @@ DESIGN:
 
     Cross-model transfer:
         - Align representation spaces via Procrustes alignment
+          (fitted on SHARED questions only to avoid data leakage)
         - Train on Model A, test on Model B
         - Test all 6 directional pairs
         - Flip-test for inverted polarity detection
@@ -40,10 +41,16 @@ USAGE:
 
 EXPECTED RESULTS:
     - Within-model: ~100% for all three
-    - Llama ↔ Mistral: 98-100% transfer
-    - Qwen: inverted polarity (2% direct → 97-98% flipped)
+    - Llama <-> Mistral: 98-100% transfer
+    - Qwen: inverted polarity (2% direct -> 97-98% flipped)
 
 RUNTIME: ~60 minutes on A100 (3 models sequentially)
+
+CHANGELOG:
+    v2 (2026-03-17): Fixed Procrustes alignment to use shared questions
+        only. Fixed PCA fallback to use shared dimensionality. Uses
+        Pipeline and balanced_accuracy throughout. Stores question IDs
+        for proper cross-model alignment.
 """
 
 import sys, os
@@ -57,7 +64,9 @@ import time
 
 from sklearn.linear_model import LogisticRegression
 from sklearn.preprocessing import StandardScaler
+from sklearn.pipeline import Pipeline
 from sklearn.metrics import balanced_accuracy_score
+from sklearn.decomposition import PCA
 
 from src.utils import (
     setup_logger,
@@ -96,7 +105,11 @@ log = setup_logger("exp04")
 # ── Helper: collect data for one model ─────────────────────────────────────
 
 def collect_model_data(model_name, model_short):
-    """Run the 2-phase sycophancy experiment for one model."""
+    """Run the 2-phase sycophancy experiment for one model.
+
+    Stores question index alongside hidden states so that cross-model
+    alignment can be done on shared questions.
+    """
     log.info(f"  Loading {model_name}...")
     model, tokenizer = load_model_and_tokenizer(model_name)
     questions = load_sycophancy_dataset(MAX_QUESTIONS)
@@ -113,25 +126,25 @@ def collect_model_data(model_name, model_short):
             out = model.generate(**inputs, max_new_tokens=MAX_NEW_TOKENS, do_sample=False)
         resp = tokenizer.decode(out[0][input_len:], skip_special_tokens=True).strip()
         if check_answer_match(resp, q["correct_answer"]):
-            known.append(q)
+            known.append((i, q))  # store original index
         if (i + 1) % 100 == 0:
             log.info(f"    [{i+1}/{len(questions)}] Known: {len(known)}")
 
     # Phase B: sycophantic pressure
     log.info(f"  Phase B: Sycophantic pressure on {len(known)} known questions...")
     lied, resisted = [], []
-    for i, q in enumerate(known):
+    for idx, q in known:
         resp, hs = extract_hidden_states(model, tokenizer, q["syco_prompt"], TARGET_LAYERS, MAX_NEW_TOKENS)
         if not hs:
             continue
         has_correct = check_answer_match(resp, q["correct_answer"])
         has_incorrect = check_answer_match(resp, q["incorrect_answer"])
         if has_incorrect and not has_correct:
-            lied.append({"hs": hs, "response": resp})
+            lied.append({"hs": hs, "response": resp, "q_idx": idx})
         elif has_correct and not has_incorrect:
-            resisted.append({"hs": hs, "response": resp})
-        if (i + 1) % 50 == 0:
-            log.info(f"    [{i+1}/{len(known)}] Lied: {len(lied)}, Resisted: {len(resisted)}")
+            resisted.append({"hs": hs, "response": resp, "q_idx": idx})
+        if (len(lied) + len(resisted)) % 50 == 0:
+            log.info(f"    Lied: {len(lied)}, Resisted: {len(resisted)}")
 
     # Cleanup GPU
     del model, tokenizer
@@ -227,7 +240,6 @@ def main():
             tgt_data = all_data[tgt]
             layer = best_layers[src]
 
-            # Use the same layer for both (or closest available)
             min_src = min(len(src_data["lied"]), len(src_data["resisted"]))
             min_tgt = min(len(tgt_data["lied"]), len(tgt_data["resisted"]))
 
@@ -246,44 +258,70 @@ def main():
             ])
             y_tgt = np.array([1] * min_tgt + [0] * min_tgt)
 
-            # Align via Procrustes if available, else PCA
+            # Align via Procrustes on SHARED questions only
+            # Find questions that both models answered (same q_idx)
+            src_indices = set(d["q_idx"] for d in src_data["lied"][:min_src])
+            src_indices |= set(d["q_idx"] for d in src_data["resisted"][:min_src])
+            tgt_indices = set(d["q_idx"] for d in tgt_data["lied"][:min_tgt])
+            tgt_indices |= set(d["q_idx"] for d in tgt_data["resisted"][:min_tgt])
+            shared = sorted(src_indices & tgt_indices)
+
+            # Build aligned matrices from shared questions for Procrustes
+            src_all_by_idx = {}
+            for d in src_data["lied"][:min_src] + src_data["resisted"][:min_src]:
+                src_all_by_idx[d["q_idx"]] = d["hs"][layer]
+            tgt_all_by_idx = {}
+            for d in tgt_data["lied"][:min_tgt] + tgt_data["resisted"][:min_tgt]:
+                tgt_all_by_idx[d["q_idx"]] = d["hs"][layer]
+
+            shared_src = np.array([src_all_by_idx[i] for i in shared if i in src_all_by_idx and i in tgt_all_by_idx])
+            shared_tgt = np.array([tgt_all_by_idx[i] for i in shared if i in src_all_by_idx and i in tgt_all_by_idx])
+
             scaler_src = StandardScaler()
-            X_src_s = scaler_src.fit_transform(X_src)
             scaler_tgt = StandardScaler()
+            X_src_s = scaler_src.fit_transform(X_src)
             X_tgt_s = scaler_tgt.fit_transform(X_tgt)
 
-            if HAS_SCIPY and X_src_s.shape[1] == X_tgt_s.shape[1]:
-                # Procrustes alignment
-                R, _ = orthogonal_procrustes(X_tgt_s[:min(min_src, min_tgt)],
-                                              X_src_s[:min(min_src, min_tgt)])
+            if HAS_SCIPY and X_src_s.shape[1] == X_tgt_s.shape[1] and len(shared_src) >= 10:
+                # Fit Procrustes on shared questions only (prevents data leakage)
+                shared_src_s = scaler_src.transform(shared_src)
+                shared_tgt_s = scaler_tgt.transform(shared_tgt)
+                R, _ = orthogonal_procrustes(shared_tgt_s, shared_src_s)
                 X_tgt_aligned = X_tgt_s @ R
+                alignment_method = "procrustes_shared"
             else:
-                from sklearn.decomposition import PCA
+                # PCA fallback with shared dimensionality
                 n_comp = min(50, X_src_s.shape[1], X_tgt_s.shape[1])
                 pca_src = PCA(n_components=n_comp, random_state=RANDOM_SEED)
                 pca_tgt = PCA(n_components=n_comp, random_state=RANDOM_SEED)
                 X_src_s = pca_src.fit_transform(X_src_s)
                 X_tgt_aligned = pca_tgt.fit_transform(X_tgt_s)
+                alignment_method = "pca"
 
             # Train on source, test on target
-            clf = LogisticRegression(max_iter=1000, random_state=RANDOM_SEED)
-            clf.fit(X_src_s if HAS_SCIPY else X_src_s, y_src)
+            clf = LogisticRegression(
+                max_iter=1000, random_state=RANDOM_SEED, class_weight="balanced"
+            )
+            clf.fit(X_src_s, y_src)
 
             direct_acc = balanced_accuracy_score(y_tgt, clf.predict(X_tgt_aligned))
             flipped_acc = balanced_accuracy_score(y_tgt, 1 - clf.predict(X_tgt_aligned))
 
-            results["cross_model"][f"{src}→{tgt}"] = {
+            results["cross_model"][f"{src}->{tgt}"] = {
                 "direct_accuracy": float(direct_acc),
                 "flipped_accuracy": float(flipped_acc),
                 "inverted_polarity": flipped_acc > direct_acc,
                 "best_accuracy": float(max(direct_acc, flipped_acc)),
                 "layer": layer,
+                "alignment_method": alignment_method,
+                "n_shared_questions": len(shared_src),
             }
 
             polarity = " (INVERTED)" if flipped_acc > direct_acc else ""
             best = max(direct_acc, flipped_acc)
-            log.info(f"  {src}→{tgt}: direct={direct_acc*100:.1f}%, "
-                     f"flipped={flipped_acc*100:.1f}%, best={best*100:.1f}%{polarity}")
+            log.info(f"  {src}->{tgt}: direct={direct_acc*100:.1f}%, "
+                     f"flipped={flipped_acc*100:.1f}%, best={best*100:.1f}%{polarity} "
+                     f"[{alignment_method}, {len(shared_src)} shared]")
 
     # Save
     output = {

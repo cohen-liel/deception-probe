@@ -1,6 +1,6 @@
 # Project Context — Read This First
 
-**Last updated:** March 17, 2026  
+**Last updated:** March 17, 2026 (v2 — post code-review fixes)  
 **Purpose:** This file contains all accumulated context about this research project. When starting a new session, read this file first to avoid re-doing research.
 
 ---
@@ -40,10 +40,12 @@ deception-probe/
 │   ├── 03_lie_vs_hallucination/       # Separating lies from hallucinations
 │   ├── 04_cross_model_transfer/       # Cross-model generalization
 │   ├── 05_deception_types/            # Sycophancy, instruction conflict, authority pressure
-│   └── 06_mechanistic_analysis/       # NEW: Logit Lens, Activation Patching, Attention Analysis
-│       ├── logit_lens.py              # Traces WHERE truth gets overridden layer by layer
-│       ├── activation_patching.py     # Causal proof of which layers cause deception
-│       └── attention_analysis.py      # Which attention heads attend to sycophantic pressure
+│   ├── 06_mechanistic_analysis/       # Logit Lens, Activation Patching, Attention Analysis
+│   │   ├── logit_lens.py              # Traces WHERE truth gets overridden layer by layer
+│   │   ├── activation_patching.py     # Causal proof of which layers cause deception
+│   │   └── attention_analysis.py      # Which attention heads attend to sycophantic pressure
+│   └── 07_visualizations/             # Publication-quality figures
+│       └── generate_plots.py          # Generates all plots from experiment results
 ├── docs/
 │   ├── PROJECT_CONTEXT.md             # THIS FILE — read first in every session
 │   ├── literature_review.md           # Comprehensive literature review (6 sections)
@@ -118,18 +120,36 @@ Small sample size is a valid concern. Our defense: (1) Permutation test with 500
 
 ---
 
-## 7. Next Steps (Priority Order)
+## 7. Code Review & Bug Fixes (v2, March 17 2026)
 
-1. **Run Experiment 06 (Mechanistic Analysis)** on GPU — Logit Lens, Activation Patching, Attention Analysis
-2. **Scale dataset** from 43 to 200+ samples
-3. **Contact Yftah Ziser** with summary + GitHub link
-4. **Wait for Belinkov's response** — follow up if no reply in 1 week
-5. **Write paper draft** — target venue: EMNLP 2026 or NeurIPS 2026
-6. **Future:** Explore SAE-based feature discovery (requires collaboration with Belinkov's lab)
+Claude performed a code review and identified several issues. All have been fixed:
+
+| Bug | Severity | Fix |
+|-----|----------|-----|
+| Data leakage: StandardScaler fit on full dataset before CV | Critical | Replaced with sklearn.Pipeline (scaler inside CV) |
+| Permutation test: scaler re-fit on shuffled labels | Critical | Pipeline ensures scaler is fit per-fold |
+| Answer matching: false positives on partial matches | Medium | Multi-level matching (exact > all-significant-words) |
+| Cosine similarity: no random baseline comparison | Medium | Added random_cosine_baseline() function |
+| Procrustes: fitted on all questions including test | Medium | Now fitted only on shared questions |
+| Cross-question metric: accuracy instead of balanced_accuracy | Medium | Fixed to balanced_accuracy_score |
+| Logit Lens: crash on quantized models | Medium | Safe lm_head access with fallback |
+| Dead code: unused Procrustes in exp04 | Low | Removed |
 
 ---
 
-## 8. How to Use This File
+## 8. Next Steps (Priority Order)
+
+1. **Run Experiment 06 (Mechanistic Analysis)** on GPU — Logit Lens, Activation Patching, Attention Analysis
+2. **Run Experiment 07 (Visualizations)** — generate publication-quality figures
+3. **Scale dataset** from 43 to 200+ samples
+4. **Contact Yftah Ziser** with summary + GitHub link
+5. **Wait for Belinkov's response** — follow up if no reply in 1 week
+6. **Write paper draft** — target venue: EMNLP 2026 or NeurIPS 2026
+7. **Future:** Explore SAE-based feature discovery (requires collaboration with Belinkov's lab)
+
+---
+
+## 9. How to Use This File
 
 **For Manus AI (or any AI assistant):**
 > When starting a new session about this project, read this file first:

@@ -11,9 +11,8 @@ PURPOSE:
 
 METHOD:
     For each question where the model LIED under sycophantic pressure:
-        1. Run a forward pass (no generation) on the sycophantic prompt
-           + the first generated token, collecting hidden states at
-           every layer.
+        1. Run a forward pass (no generation) on the sycophantic prompt,
+           collecting hidden states at every layer.
         2. For each layer, project the hidden state at the last prompt
            position through the unembedding matrix:
                logits_layer = LayerNorm(h_layer) @ W_unembed
@@ -39,6 +38,11 @@ USAGE:
     %run experiments/06_mechanistic_analysis/logit_lens.py
 
 RUNTIME: ~20 minutes on A100
+
+CHANGELOG:
+    v2 (2026-03-17): Fixed lm_head access for quantized models.
+        Added multiple token variants for robust matching.
+        Added visualization output.
 """
 
 import sys, os
@@ -61,6 +65,7 @@ from src.utils import (
 MODEL_NAME = "meta-llama/Llama-3.1-8B-Instruct"
 MAX_QUESTIONS = 500
 MAX_NEW_TOKENS = 80
+MAX_EXAMPLES = 50  # max lie/resist examples to analyze
 RANDOM_SEED = 42
 
 np.random.seed(RANDOM_SEED)
@@ -69,13 +74,34 @@ log = setup_logger("logit_lens")
 
 # ── Core: Logit Lens projection ───────────────────────────────────────────
 
+def get_lm_head_and_norm(model):
+    """
+    Safely extract the lm_head and final layer norm from the model,
+    handling both regular and quantized models.
+
+    For quantized models, lm_head.weight might be a QuantizedTensor.
+    We extract the dequantized weight matrix for manual projection.
+    """
+    lm_head = model.lm_head
+
+    # Get final layer norm
+    if hasattr(model.model, "norm"):
+        final_norm = model.model.norm
+    elif hasattr(model.model, "final_layernorm"):
+        final_norm = model.model.final_layernorm
+    else:
+        final_norm = None
+
+    return lm_head, final_norm
+
+
 def logit_lens_forward(model, tokenizer, prompt: str):
     """
     Run a forward pass and project each layer's hidden state through
     the unembedding matrix.
 
     Returns:
-        all_logits: dict[layer_idx] → logits tensor (vocab_size,)
+        all_logits: dict[layer_idx] -> logits tensor (vocab_size,)
         input_ids: the tokenized input
     """
     messages = [{"role": "user", "content": prompt}]
@@ -91,16 +117,7 @@ def logit_lens_forward(model, tokenizer, prompt: str):
             return_dict=True,
         )
 
-    # Get unembedding matrix and layer norm
-    lm_head = model.lm_head  # Linear(hidden_dim, vocab_size)
-    # Most models apply a final LayerNorm before the lm_head
-    if hasattr(model.model, "norm"):
-        final_norm = model.model.norm
-    elif hasattr(model.model, "final_layernorm"):
-        final_norm = model.model.final_layernorm
-    else:
-        final_norm = None
-
+    lm_head, final_norm = get_lm_head_and_norm(model)
     hidden_states = outputs.hidden_states  # tuple of (batch, seq_len, hidden_dim)
     n_layers = len(hidden_states) - 1  # -1 because index 0 is embedding
 
@@ -116,22 +133,64 @@ def logit_lens_forward(model, tokenizer, prompt: str):
         else:
             h_normed = h
 
-        # Project through unembedding
-        logits = lm_head(h_normed.unsqueeze(0)).squeeze(0)  # (vocab_size,)
+        # Project through unembedding — use the lm_head module directly
+        # This handles both regular and quantized weights transparently
+        try:
+            logits = lm_head(h_normed.unsqueeze(0)).squeeze(0)  # (vocab_size,)
+        except Exception:
+            # Fallback: manual matmul with dequantized weight
+            weight = lm_head.weight
+            if hasattr(weight, "dequantize"):
+                weight = weight.dequantize()
+            logits = torch.matmul(h_normed.float(), weight.float().T)
+
         all_logits[layer_idx] = logits.cpu().float()
 
     return all_logits, inputs["input_ids"][0]
 
 
-def get_token_id(tokenizer, text: str) -> int:
-    """Get the first token ID for a given text."""
-    tokens = tokenizer.encode(text, add_special_tokens=False)
-    return tokens[0] if tokens else -1
+def get_token_ids(tokenizer, text: str) -> list:
+    """
+    Get multiple token ID variants for a given text.
+    Tries: " answer", "answer", " Answer", "Answer"
+    Returns list of unique token IDs to check.
+    """
+    variants = [f" {text}", text, f" {text.capitalize()}", text.capitalize()]
+    token_ids = set()
+    for v in variants:
+        tokens = tokenizer.encode(v, add_special_tokens=False)
+        if tokens:
+            token_ids.add(tokens[0])
+    return list(token_ids)
 
 
-def analyze_trajectory(all_logits, correct_token_id, wrong_token_id, n_layers):
+def get_best_rank(logits, token_ids):
+    """Get the best (lowest) rank among multiple token ID variants."""
+    sorted_indices = torch.argsort(logits, descending=True)
+    ranks = torch.zeros(logits.shape[0], dtype=torch.long)
+    ranks[sorted_indices] = torch.arange(len(logits))
+
+    probs = torch.softmax(logits, dim=-1)
+
+    best_rank = len(logits)  # worst possible
+    best_prob = 0.0
+    best_tid = -1
+    for tid in token_ids:
+        if tid >= 0 and tid < len(logits):
+            r = int(ranks[tid])
+            p = float(probs[tid])
+            if r < best_rank:
+                best_rank = r
+                best_prob = p
+                best_tid = tid
+
+    return best_rank, best_prob, best_tid
+
+
+def analyze_trajectory(all_logits, correct_token_ids, wrong_token_ids, n_layers):
     """
     Analyze the rank and probability trajectory of correct vs wrong tokens.
+    Uses multiple token variants for robust matching.
 
     Returns dict with per-layer data and the "flip layer".
     """
@@ -140,20 +199,12 @@ def analyze_trajectory(all_logits, correct_token_id, wrong_token_id, n_layers):
 
     for layer_idx in range(n_layers + 1):
         logits = all_logits[layer_idx]
-        probs = torch.softmax(logits, dim=-1)
 
-        # Ranks (0 = highest probability)
-        sorted_indices = torch.argsort(logits, descending=True)
-        ranks = torch.zeros_like(logits, dtype=torch.long)
-        ranks[sorted_indices] = torch.arange(len(logits))
-
-        correct_rank = int(ranks[correct_token_id])
-        wrong_rank = int(ranks[wrong_token_id])
-        correct_prob = float(probs[correct_token_id])
-        wrong_prob = float(probs[wrong_token_id])
+        correct_rank, correct_prob, _ = get_best_rank(logits, correct_token_ids)
+        wrong_rank, wrong_prob, _ = get_best_rank(logits, wrong_token_ids)
 
         # Top prediction at this layer
-        top_token_id = int(sorted_indices[0])
+        top_token_id = int(torch.argmax(logits))
 
         trajectory.append({
             "layer": layer_idx,
@@ -212,11 +263,11 @@ def main():
     resist_trajectories = []
 
     for i, q in enumerate(known):
-        # Get token IDs for correct and wrong answers
-        correct_tid = get_token_id(tokenizer, " " + q["correct_answer"])
-        wrong_tid = get_token_id(tokenizer, " " + q["incorrect_answer"])
+        # Get token IDs for correct and wrong answers (multiple variants)
+        correct_tids = get_token_ids(tokenizer, q["correct_answer"])
+        wrong_tids = get_token_ids(tokenizer, q["incorrect_answer"])
 
-        if correct_tid == -1 or wrong_tid == -1:
+        if not correct_tids or not wrong_tids:
             continue
 
         # First: generate to see if model lied or resisted
@@ -237,7 +288,7 @@ def main():
 
         # Now run logit lens
         all_logits, _ = logit_lens_forward(model, tokenizer, q["syco_prompt"])
-        traj = analyze_trajectory(all_logits, correct_tid, wrong_tid, n_layers)
+        traj = analyze_trajectory(all_logits, correct_tids, wrong_tids, n_layers)
         traj["question"] = q["question"][:80]
         traj["correct_answer"] = q["correct_answer"]
         traj["incorrect_answer"] = q["incorrect_answer"]
@@ -254,7 +305,7 @@ def main():
                      f"Resisted: {len(resist_trajectories)}")
 
         # Limit to avoid excessive runtime
-        if len(lie_trajectories) >= 50 and len(resist_trajectories) >= 50:
+        if len(lie_trajectories) >= MAX_EXAMPLES and len(resist_trajectories) >= MAX_EXAMPLES:
             break
 
     log.info(f"  Analyzed: {len(lie_trajectories)} lies, {len(resist_trajectories)} resists")
@@ -263,9 +314,13 @@ def main():
     log.info("\nAggregating results...")
 
     # Average rank trajectory for lies
+    avg_lie_correct_rank = []
+    avg_lie_wrong_rank = []
+    flip_layers = []
+    median_flip = None
+    mean_flip = None
+
     if lie_trajectories:
-        avg_lie_correct_rank = []
-        avg_lie_wrong_rank = []
         flip_layers = [t["flip_layer"] for t in lie_trajectories if t["flip_layer"] is not None]
 
         for layer_idx in range(n_layers + 1):
@@ -283,10 +338,10 @@ def main():
             log.info(f"    Range: {min(flip_layers)} - {max(flip_layers)}")
 
     # Average rank trajectory for resists
-    if resist_trajectories:
-        avg_resist_correct_rank = []
-        avg_resist_wrong_rank = []
+    avg_resist_correct_rank = []
+    avg_resist_wrong_rank = []
 
+    if resist_trajectories:
         for layer_idx in range(n_layers + 1):
             correct_ranks = [t["trajectory"][layer_idx]["correct_rank"] for t in resist_trajectories]
             wrong_ranks = [t["trajectory"][layer_idx]["wrong_rank"] for t in resist_trajectories]
@@ -296,23 +351,24 @@ def main():
     # ── Summary ────────────────────────────────────────────────────────
     log.info("\n" + "=" * 60)
     log.info("LOGIT LENS SUMMARY")
-    log.info("=" * 60)
 
     if lie_trajectories:
         log.info(f"\nWhen the model LIES:")
         log.info(f"  Early layers (0-10): correct answer ranked ~{np.mean(avg_lie_correct_rank[:11]):.0f}, "
                  f"wrong answer ranked ~{np.mean(avg_lie_wrong_rank[:11]):.0f}")
-        log.info(f"  Late layers (20-32): correct answer ranked ~{np.mean(avg_lie_correct_rank[20:]):.0f}, "
-                 f"wrong answer ranked ~{np.mean(avg_lie_wrong_rank[20:]):.0f}")
+        late_start = min(20, n_layers)
+        log.info(f"  Late layers ({late_start}-{n_layers}): correct answer ranked "
+                 f"~{np.mean(avg_lie_correct_rank[late_start:]):.0f}, "
+                 f"wrong answer ranked ~{np.mean(avg_lie_wrong_rank[late_start:]):.0f}")
         if flip_layers:
             log.info(f"  FLIP LAYER (median): {median_flip:.1f}")
-            log.info(f"  → The model 'knows' the truth until layer ~{median_flip:.0f}, "
+            log.info(f"  -> The model 'knows' the truth until layer ~{median_flip:.0f}, "
                      f"then the sycophantic pressure overrides it.")
 
     if resist_trajectories:
         log.info(f"\nWhen the model RESISTS:")
         log.info(f"  Correct answer stays dominant throughout all layers.")
-        log.info(f"  → The sycophantic pressure never overrides the truth.")
+        log.info(f"  -> The sycophantic pressure never overrides the truth.")
 
     # Save
     output = {
@@ -321,13 +377,13 @@ def main():
         "n_layers": n_layers,
         "n_lie_trajectories": len(lie_trajectories),
         "n_resist_trajectories": len(resist_trajectories),
-        "lie_flip_layers": flip_layers if lie_trajectories else [],
-        "median_flip_layer": median_flip if lie_trajectories and flip_layers else None,
-        "mean_flip_layer": mean_flip if lie_trajectories and flip_layers else None,
-        "avg_lie_correct_rank": avg_lie_correct_rank if lie_trajectories else [],
-        "avg_lie_wrong_rank": avg_lie_wrong_rank if lie_trajectories else [],
-        "avg_resist_correct_rank": avg_resist_correct_rank if resist_trajectories else [],
-        "avg_resist_wrong_rank": avg_resist_wrong_rank if resist_trajectories else [],
+        "lie_flip_layers": flip_layers,
+        "median_flip_layer": median_flip,
+        "mean_flip_layer": mean_flip,
+        "avg_lie_correct_rank": avg_lie_correct_rank,
+        "avg_lie_wrong_rank": avg_lie_wrong_rank,
+        "avg_resist_correct_rank": avg_resist_correct_rank,
+        "avg_resist_wrong_rank": avg_resist_wrong_rank,
         "lie_examples": [
             {
                 "question": t["question"],
