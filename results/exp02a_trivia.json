@@ -1,0 +1,229 @@
+{
+  "experiment": "02a_trivia_sycophancy",
+  "description": "Same-prompt deception detection on trivia questions.",
+  "model": "meta-llama/Llama-3.1-8B-Instruct",
+  "layers": [
+    0,
+    8,
+    12,
+    14,
+    15,
+    16,
+    17,
+    18,
+    20,
+    24
+  ],
+  "n_known": 768,
+  "n_lied": 99,
+  "n_resisted": 313,
+  "n_balanced": 99,
+  "lie_rate": 0.12890625,
+  "length_baseline": 0.5463157894736842,
+  "best_layer": 16,
+  "best_accuracy": 0.8239473684210527,
+  "layer_0_accuracy": 0.5,
+  "confusion_matrix": {
+    "TP": 78,
+    "FP": 14,
+    "TN": 85,
+    "FN": 21
+  },
+  "rates": {
+    "TPR": 0.7878787878787878,
+    "FPR": 0.1414141414141414,
+    "TNR": 0.8585858585858586,
+    "FNR": 0.21212121212121213
+  },
+  "results_per_layer": {
+    "0": {
+      "balanced_accuracy": 0.5,
+      "std": 0.0,
+      "folds": [
+        0.5,
+        0.5,
+        0.5,
+        0.5,
+        0.5
+      ],
+      "chance_level": 0.5,
+      "n_samples": 198,
+      "n_per_class": 99
+    },
+    "8": {
+      "balanced_accuracy": 0.6360526315789474,
+      "std": 0.05907059488489516,
+      "folds": [
+        0.625,
+        0.625,
+        0.675,
+        0.5394736842105263,
+        0.7157894736842105
+      ],
+      "chance_level": 0.5,
+      "n_samples": 198,
+      "n_per_class": 99,
+      "p_value": 0.002,
+      "null_mean": 0.49551736842105265,
+      "null_std": 0.04412526933208238,
+      "n_permutations": 500
+    },
+    "12": {
+      "balanced_accuracy": 0.6976315789473684,
+      "std": 0.060768394613758894,
+      "folds": [
+        0.625,
+        0.8,
+        0.6499999999999999,
+        0.6947368421052631,
+        0.7184210526315788
+      ],
+      "chance_level": 0.5,
+      "n_samples": 198,
+      "n_per_class": 99,
+      "p_value": 0.0,
+      "null_mean": 0.49804157894736845,
+      "null_std": 0.044481228444519356,
+      "n_permutations": 500
+    },
+    "14": {
+      "balanced_accuracy": 0.7728947368421053,
+      "std": 0.02653331152529993,
+      "folds": [
+        0.775,
+        0.75,
+        0.775,
+        0.7447368421052631,
+        0.8197368421052631
+      ],
+      "chance_level": 0.5,
+      "n_samples": 198,
+      "n_per_class": 99,
+      "p_value": 0.0,
+      "null_mean": 0.4941973684210526,
+      "null_std": 0.04438859775666859,
+      "n_permutations": 500
+    },
+    "15": {
+      "balanced_accuracy": 0.8036842105263158,
+      "std": 0.05304051657829105,
+      "folds": [
+        0.875,
+        0.725,
+        0.8,
+        0.7723684210526316,
+        0.8460526315789474
+      ],
+      "chance_level": 0.5,
+      "n_samples": 198,
+      "n_per_class": 99,
+      "p_value": 0.0,
+      "null_mean": 0.49601210526315787,
+      "null_std": 0.04420298673492651,
+      "n_permutations": 500
+    },
+    "16": {
+      "balanced_accuracy": 0.8239473684210527,
+      "std": 0.03892958342153121,
+      "folds": [
+        0.8999999999999999,
+        0.8,
+        0.8,
+        0.7986842105263158,
+        0.8210526315789474
+      ],
+      "chance_level": 0.5,
+      "n_samples": 198,
+      "n_per_class": 99,
+      "p_value": 0.0,
+      "null_mean": 0.498271052631579,
+      "null_std": 0.04672823615349311,
+      "n_permutations": 500
+    },
+    "17": {
+      "balanced_accuracy": 0.8136842105263158,
+      "std": 0.04408660577617953,
+      "folds": [
+        0.9,
+        0.8,
+        0.775,
+        0.7986842105263158,
+        0.7947368421052632
+      ],
+      "chance_level": 0.5,
+      "n_samples": 198,
+      "n_per_class": 99,
+      "p_value": 0.0,
+      "null_mean": 0.4951973684210526,
+      "null_std": 0.04522832770978629,
+      "n_permutations": 500
+    },
+    "18": {
+      "balanced_accuracy": 0.8036842105263158,
+      "std": 0.04380136478223829,
+      "folds": [
+        0.875,
+        0.8,
+        0.775,
+        0.8223684210526316,
+        0.7460526315789473
+      ],
+      "chance_level": 0.5,
+      "n_samples": 198,
+      "n_per_class": 99,
+      "p_value": 0.0,
+      "null_mean": 0.49969,
+      "null_std": 0.044344729202389334,
+      "n_permutations": 500
+    },
+    "20": {
+      "balanced_accuracy": 0.7839473684210526,
+      "std": 0.04324445747715046,
+      "folds": [
+        0.85,
+        0.75,
+        0.725,
+        0.7973684210526315,
+        0.7973684210526315
+      ],
+      "chance_level": 0.5,
+      "n_samples": 198,
+      "n_per_class": 99,
+      "p_value": 0.0,
+      "null_mean": 0.5019278947368421,
+      "null_std": 0.045127354201525235,
+      "n_permutations": 500
+    },
+    "24": {
+      "balanced_accuracy": 0.7736842105263158,
+      "std": 0.05443616811359859,
+      "folds": [
+        0.825,
+        0.75,
+        0.7,
+        0.7460526315789473,
+        0.8473684210526315
+      ],
+      "chance_level": 0.5,
+      "n_samples": 198,
+      "n_per_class": 99,
+      "p_value": 0.0,
+      "null_mean": 0.5000884210526316,
+      "null_std": 0.04644731556877864,
+      "n_permutations": 500
+    }
+  },
+  "cross_question_balanced": {
+    "0": 0.5,
+    "8": 0.54,
+    "12": 0.6499999999999999,
+    "14": 0.75,
+    "15": 0.75,
+    "16": 0.74,
+    "17": 0.75,
+    "18": 0.77,
+    "20": 0.75,
+    "24": 0.71
+  },
+  "elapsed_seconds": 10242.142394065857
+}

@@ -11,7 +11,6 @@ build/
 *.pkl
 
 # Results (generated at runtime — re-run experiments to reproduce)
-results/*.json
 
 # Jupyter
 .ipynb_checkpoints/

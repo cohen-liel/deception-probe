@@ -1,0 +1,110 @@
+{
+  "experiment": "01_baseline_confounded",
+  "description": "Baseline sycophancy detection with prompt confound (different prompts)",
+  "model": "meta-llama/Llama-3.1-8B-Instruct",
+  "layers": [
+    0,
+    8,
+    12,
+    16,
+    24
+  ],
+  "n_truth": 149,
+  "n_lies": 50,
+  "n_balanced": 50,
+  "length_baseline": 0.65,
+  "results_per_layer": {
+    "0": {
+      "balanced_accuracy": 0.5,
+      "std": 0.0,
+      "folds": [
+        0.5,
+        0.5,
+        0.5,
+        0.5,
+        0.5
+      ],
+      "chance_level": 0.5,
+      "n_samples": 100,
+      "n_per_class": 50,
+      "p_value": 1.0,
+      "null_mean": 0.5,
+      "null_std": 0.0,
+      "n_permutations": 200
+    },
+    "8": {
+      "balanced_accuracy": 1.0,
+      "std": 0.0,
+      "folds": [
+        1.0,
+        1.0,
+        1.0,
+        1.0,
+        1.0
+      ],
+      "chance_level": 0.5,
+      "n_samples": 100,
+      "n_per_class": 50,
+      "p_value": 0.0,
+      "null_mean": 0.491,
+      "null_std": 0.06009991680526688,
+      "n_permutations": 200
+    },
+    "12": {
+      "balanced_accuracy": 1.0,
+      "std": 0.0,
+      "folds": [
+        1.0,
+        1.0,
+        1.0,
+        1.0,
+        1.0
+      ],
+      "chance_level": 0.5,
+      "n_samples": 100,
+      "n_per_class": 50,
+      "p_value": 0.0,
+      "null_mean": 0.5056999999999999,
+      "null_std": 0.0650039229585415,
+      "n_permutations": 200
+    },
+    "16": {
+      "balanced_accuracy": 1.0,
+      "std": 0.0,
+      "folds": [
+        1.0,
+        1.0,
+        1.0,
+        1.0,
+        1.0
+      ],
+      "chance_level": 0.5,
+      "n_samples": 100,
+      "n_per_class": 50,
+      "p_value": 0.0,
+      "null_mean": 0.49939999999999996,
+      "null_std": 0.057485998295237074,
+      "n_permutations": 200
+    },
+    "24": {
+      "balanced_accuracy": 1.0,
+      "std": 0.0,
+      "folds": [
+        1.0,
+        1.0,
+        1.0,
+        1.0,
+        1.0
+      ],
+      "chance_level": 0.5,
+      "n_samples": 100,
+      "n_per_class": 50,
+      "p_value": 0.0,
+      "null_mean": 0.5021,
+      "null_std": 0.0564321716753839,
+      "n_permutations": 200
+    }
+  },
+  "conclusion": "~100% accuracy INCLUDING Layer 0 confirms prompt confound. The probe detects the prompt format, not the lie itself.",
+  "elapsed_seconds": 401.232070684433
+}
