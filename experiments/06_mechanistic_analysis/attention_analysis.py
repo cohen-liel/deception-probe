@@ -73,27 +73,66 @@ def find_pressure_positions(tokenizer, prompt: str, wrong_answer: str):
     Find the token positions in the prompt that correspond to the
     user's suggested wrong answer.
 
-    Returns list of token indices.
+    Strategy:
+        1. First try: tokenize the full prompt and the answer separately,
+           then do a token-level sliding window search for an exact match.
+        2. Fallback: tokenize the answer with a leading space (" answer")
+           since BPE tokenizers produce different tokens depending on context.
+        3. Final fallback: character-level search — find where the answer
+           appears in the prompt string, then map character positions to
+           token positions via offset mapping.
+
+    Returns list of token indices, or empty list if not found.
     """
     messages = [{"role": "user", "content": prompt}]
     input_text = tokenizer.apply_chat_template(
         messages, tokenize=False, add_generation_prompt=True
     )
+
+    # Strategy 1 & 2: Token-level sliding window
     input_ids = tokenizer.encode(input_text, add_special_tokens=False)
 
-    # Tokenize just the wrong answer
-    answer_tokens = tokenizer.encode(wrong_answer, add_special_tokens=False)
-    if not answer_tokens:
-        return []
+    # Try multiple tokenization variants of the answer
+    answer_variants = [
+        wrong_answer,
+        f" {wrong_answer}",
+        wrong_answer.strip(),
+        f" {wrong_answer.strip()}",
+    ]
 
-    # Sliding window search for the answer tokens in the input
-    positions = []
-    for start in range(len(input_ids) - len(answer_tokens) + 1):
-        if input_ids[start:start + len(answer_tokens)] == answer_tokens:
-            positions = list(range(start, start + len(answer_tokens)))
-            break
+    for variant in answer_variants:
+        answer_tokens = tokenizer.encode(variant, add_special_tokens=False)
+        if not answer_tokens:
+            continue
+        for start in range(len(input_ids) - len(answer_tokens) + 1):
+            if input_ids[start:start + len(answer_tokens)] == answer_tokens:
+                return list(range(start, start + len(answer_tokens)))
 
-    return positions
+    # Strategy 3: Character-level mapping via offset_mapping
+    try:
+        encoded = tokenizer(
+            input_text, return_offsets_mapping=True, add_special_tokens=False
+        )
+        offsets = encoded["offset_mapping"]
+        input_ids_enc = encoded["input_ids"]
+
+        # Find where the answer appears in the string
+        answer_lower = wrong_answer.lower()
+        text_lower = input_text.lower()
+        char_start = text_lower.rfind(answer_lower)  # rfind = last occurrence
+
+        if char_start >= 0:
+            char_end = char_start + len(wrong_answer)
+            positions = []
+            for tok_idx, (s, e) in enumerate(offsets):
+                if e > char_start and s < char_end:
+                    positions.append(tok_idx)
+            if positions:
+                return positions
+    except Exception:
+        pass  # Some tokenizers don't support offset_mapping
+
+    return []
 
 
 def forward_with_attention(model, tokenizer, prompt):

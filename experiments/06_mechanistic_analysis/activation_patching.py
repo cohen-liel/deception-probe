@@ -108,9 +108,13 @@ def patch_and_predict(model, tokenizer, prompt, clean_hidden_states, patch_layer
     Run a forward pass on `prompt`, but replace the hidden state at
     `patch_layer` with the corresponding state from `clean_hidden_states`.
 
-    Uses a forward hook to inject the clean activation.
+    Uses a forward hook to inject the clean activation at the LAST
+    sequence position. This handles the sequence length mismatch between
+    the neutral prompt (shorter) and the sycophantic prompt (longer):
+    we always patch at position -1 (the prediction position), which is
+    semantically equivalent regardless of sequence length.
 
-    Returns the top-1 predicted token.
+    Returns the top-1 predicted token and the logits.
     """
     messages = [{"role": "user", "content": prompt}]
     input_text = tokenizer.apply_chat_template(
@@ -118,7 +122,11 @@ def patch_and_predict(model, tokenizer, prompt, clean_hidden_states, patch_layer
     )
     inputs = tokenizer(input_text, return_tensors="pt").to(model.device)
 
-    # The clean hidden state to inject (last position)
+    # The clean hidden state to inject (last position of the clean run)
+    # Note: clean_hidden_states may have a different seq_len than `prompt`,
+    # because the neutral prompt is shorter than the sycophantic prompt.
+    # We always take position -1 (the prediction position) from the clean run
+    # and inject it at position -1 of the corrupted run.
     clean_h = clean_hidden_states[patch_layer][0, -1, :].clone()
 
     # Register hook on the target layer
@@ -128,12 +136,15 @@ def patch_and_predict(model, tokenizer, prompt, clean_hidden_states, patch_layer
     if target_module is not None:
         def hook_fn(module, input, output):
             # output is typically a tuple; first element is the hidden state
+            # Shape: (batch, seq_len, hidden_dim)
             if isinstance(output, tuple):
                 h = output[0]
-                h[0, -1, :] = clean_h.to(h.device)
+                # Only patch the last position (prediction position)
+                # This avoids the seq_len mismatch issue entirely
+                h[0, -1, :] = clean_h.to(h.device, dtype=h.dtype)
                 return (h,) + output[1:]
             else:
-                output[0, -1, :] = clean_h.to(output.device)
+                output[0, -1, :] = clean_h.to(output.device, dtype=output.dtype)
                 return output
 
         hook_handle = target_module.register_forward_hook(hook_fn)

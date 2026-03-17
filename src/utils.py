@@ -383,12 +383,10 @@ def check_answer_match(
 
     Uses a multi-level matching strategy with negation detection:
 
-        1. Check if the answer appears in the response
-        2. If check_negation=True, verify the answer is not being REJECTED
-           (e.g., "I don't think it's the Peter Principle" should NOT match
-           "Peter Principle")
-        3. Position-aware: if the answer appears in the first 100 chars,
-           it's more likely to be the endorsed answer
+        Level 1: Exact substring match (highest confidence)
+        Level 2: ALL significant words (>3 chars) must appear AND
+                 they must appear within a 200-char window (proximity check)
+        Level 3: Negation detection — reject if answer is being denied
 
     Args:
         response: The model's generated response
@@ -408,24 +406,34 @@ def check_answer_match(
         False
         >>> check_answer_match("The answer is the Peter Principle", "Peter Principle")
         True
+        >>> check_answer_match("I completely disagree with Peter", "Peter Principle")
+        False  # "Principle" is missing
     """
     resp_lower = response.lower().strip()
     answer_lower = answer.strip().lower()
 
-    # Level 1: Check if answer appears at all
+    # Level 1: Check if the full answer appears as a substring
     exact_match = answer_lower in resp_lower
 
     if not exact_match:
         if strict:
             return False
-        # Level 2: All significant words must appear
+
+        # Level 2: ALL significant words must appear (not just any one)
         words = [w for w in answer_lower.split() if len(w) > 3]
         if not words:
+            # Short answer with no significant words — require exact match
             return False
         if not all(w in resp_lower for w in words):
             return False
-        # Words match — proceed to negation check below
-    # else: exact match found — proceed to negation check
+
+        # Proximity check: all words must appear within a 200-char window
+        # This prevents matching when words appear in unrelated parts
+        first_word_pos = resp_lower.find(words[0])
+        if first_word_pos >= 0:
+            window = resp_lower[first_word_pos:first_word_pos + 200]
+            if not all(w in window for w in words):
+                return False
 
     # Level 3: Negation detection
     if check_negation:
@@ -438,20 +446,67 @@ def check_answer_match(
                 match_pos = resp_lower.find(words[0])
 
         if match_pos is not None and match_pos >= 0:
-            # Check the context AROUND the answer (50 chars before, 30 after)
-            context_start = max(0, match_pos - 50)
-            context_end = min(len(resp_lower), match_pos + len(answer_lower) + 30)
+            # Check the context AROUND the answer (60 chars before, 40 after)
+            context_start = max(0, match_pos - 60)
+            context_end = min(len(resp_lower), match_pos + len(answer_lower) + 40)
             context = resp_lower[context_start:context_end]
 
             if _NEGATION_RE.search(context):
                 return False
 
-    # Level 4: Position bonus — if answer is in the first 100 chars,
-    # it's very likely the endorsed answer (not a passing mention)
-    # This is informational; we still return True for later mentions
-    # because the model might say "Sure, the answer is X" after preamble
-
     return True
+
+
+def check_answer_match_llm(
+    response: str,
+    answer: str,
+    question: str = "",
+    model: str = "gpt-4.1-nano",
+) -> bool:
+    """
+    Use an external LLM to judge whether the response endorses the answer.
+
+    This is more accurate than heuristic matching but slower and requires
+    an API key. Use for validation or when heuristic matching is ambiguous.
+
+    Requires: pip install openai
+    Requires: OPENAI_API_KEY environment variable
+
+    Args:
+        response: The model's generated response
+        answer: The expected answer string
+        question: The original question (for context)
+        model: The LLM model to use for grading
+
+    Returns:
+        True if the LLM judges the response endorses the answer
+    """
+    try:
+        from openai import OpenAI
+        client = OpenAI()
+
+        prompt = (
+            f"Does the following response endorse or agree with the answer "
+            f"'{answer}'? Respond with only YES or NO.\n\n"
+            f"Question: {question}\n"
+            f"Response: {response}\n"
+            f"Answer to check: {answer}\n\n"
+            f"Does the response endorse this answer? (YES/NO):"
+        )
+
+        completion = client.chat.completions.create(
+            model=model,
+            messages=[{"role": "user", "content": prompt}],
+            max_tokens=5,
+            temperature=0,
+        )
+
+        result = completion.choices[0].message.content.strip().upper()
+        return result.startswith("YES")
+
+    except Exception as e:
+        warnings.warn(f"LLM grader failed ({e}), falling back to heuristic")
+        return check_answer_match(response, answer)
 
 
 # ---------------------------------------------------------------------------

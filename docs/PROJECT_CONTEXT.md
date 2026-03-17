@@ -1,6 +1,6 @@
 # Project Context — Read This First
 
-**Last updated:** March 17, 2026 (v3 — second code-review fixes: negation detection, multi-position tokens, quantization awareness)  
+**Last updated:** March 17, 2026 (v4 — third code-review fixes: proximity matching, LLM grader, tokenization fix, activation patching dtype)  
 **Purpose:** This file contains all accumulated context about this research project. When starting a new session, read this file first to avoid re-doing research.
 
 ---
@@ -145,6 +145,17 @@ A second review identified 4 additional issues. All fixed:
 | Token selection: only first generated token extracted | Medium | Added 3 extraction modes: first_gen_token, last_prompt_token, answer_token |
 | 4-bit quantization noise in mechanistic analysis | Medium | Added `use_bfloat16=True` option with warning when both flags set |
 | Orthogonality misinterpreted as "no deception signal" | Low | Clarified: probing *method* is universal, *directions* are type-specific |
+
+### v4 (March 17, 2026) — Third review
+A third review confirmed most v2/v3 fixes are in place and identified remaining issues. All fixed:
+
+| Issue | Severity | Fix |
+|-------|----------|-----|
+| Answer matching: word-level match too loose ("Peter" matches "Peter Principle") | Medium | Added proximity check: all significant words must appear within 200-char window |
+| Answer matching: no LLM-based validation option | Medium | Added `check_answer_match_llm()` using GPT-4.1-nano as external grader |
+| Attention analysis: tokenization mismatch (BPE context-dependent tokens) | Medium | 3-strategy approach: token sliding window → space-prefixed variants → character-level offset mapping |
+| Activation patching: sequence length mismatch between neutral/syco prompts | Medium | Documented and ensured patching always at position -1 with explicit dtype casting |
+| Activation patching: dtype mismatch in hook injection | Low | Added `.to(dtype=h.dtype)` in hook function |
 
 ---
 
