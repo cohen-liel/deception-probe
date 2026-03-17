@@ -265,6 +265,108 @@ def main():
             if layer in cross_q:
                 log.info(f"    Layer {layer:2d}: {cross_q[layer]*100:.1f}%")
 
+    # ── Per-sample predictions at best layer (for manual inspection) ────
+    best_layer_prelim = max(
+        [l for l in results if l != 0],
+        key=lambda l: results[l]["balanced_accuracy"],
+    )
+    log.info(f"\n--- Per-Sample Predictions (Layer {best_layer_prelim}) ---")
+
+    X_lied_best = np.array([d["hs"][best_layer_prelim] for d in lied_data[:min_n]])
+    X_res_best = np.array([d["hs"][best_layer_prelim] for d in resisted_data[:min_n]])
+    X_all = np.vstack([X_lied_best, X_res_best])
+    y_all = np.array([1] * min_n + [0] * min_n)  # 1=lied, 0=resisted
+
+    # Train on full data to get per-sample predictions (for inspection only)
+    from sklearn.model_selection import cross_val_predict
+    pipe_inspect = Pipeline([
+        ("scaler", StandardScaler()),
+        ("clf", LogisticRegression(
+            max_iter=1000, random_state=RANDOM_SEED, class_weight="balanced",
+        )),
+    ])
+    n_folds_inspect = min(5, min(np.bincount(y_all)))
+    cv_inspect = __import__("sklearn.model_selection", fromlist=["StratifiedKFold"]).StratifiedKFold(
+        n_splits=n_folds_inspect, shuffle=True, random_state=RANDOM_SEED,
+    )
+    y_pred_all = cross_val_predict(pipe_inspect, X_all, y_all, cv=cv_inspect)
+
+    # Build per-sample prediction list
+    predictions = []
+    tp, fp, tn, fn = 0, 0, 0, 0
+    for idx in range(len(y_all)):
+        if idx < min_n:
+            entry = lied_data[idx]
+            true_label = "LIED"
+        else:
+            entry = resisted_data[idx - min_n]
+            true_label = "RESISTED"
+
+        pred_label = "LIED" if y_pred_all[idx] == 1 else "RESISTED"
+        correct = (true_label == pred_label)
+
+        # Confusion matrix counts (positive = LIED)
+        if true_label == "LIED" and pred_label == "LIED":
+            tp += 1
+        elif true_label == "RESISTED" and pred_label == "LIED":
+            fp += 1
+        elif true_label == "RESISTED" and pred_label == "RESISTED":
+            tn += 1
+        else:  # true=LIED, pred=RESISTED
+            fn += 1
+
+        pred_entry = {
+            "index": idx,
+            "question": entry.get("question", "")[:120],
+            "correct_answer": entry.get("correct_answer", ""),
+            "incorrect_answer": entry.get("incorrect_answer", ""),
+            "response": entry["response"][:300],
+            "true_label": true_label,
+            "predicted_label": pred_label,
+            "correct_prediction": correct,
+        }
+        predictions.append(pred_entry)
+
+        # Log mistakes
+        if not correct:
+            log.info(
+                f"  MISTAKE [{idx}]: True={true_label}, Pred={pred_label}\n"
+                f"    Q: {entry.get('question', '')[:80]}\n"
+                f"    Correct ans: {entry.get('correct_answer', '')}\n"
+                f"    Incorrect ans: {entry.get('incorrect_answer', '')}\n"
+                f"    Response: {entry['response'][:150]}"
+            )
+
+    # Confusion matrix summary
+    total = tp + fp + tn + fn
+    tpr = tp / max(1, tp + fn)  # sensitivity (detecting lies)
+    fpr = fp / max(1, fp + tn)  # false positive rate
+    tnr = tn / max(1, fp + tn)  # specificity
+    fnr = fn / max(1, tp + fn)  # miss rate
+
+    log.info(f"\n  === Confusion Matrix (Layer {best_layer_prelim}) ===")
+    log.info(f"                  Predicted LIED    Predicted RESISTED")
+    log.info(f"  Actual LIED         {tp:3d} (TP)          {fn:3d} (FN)")
+    log.info(f"  Actual RESISTED     {fp:3d} (FP)          {tn:3d} (TN)")
+    log.info(f"")
+    log.info(f"  True Positive Rate  (TPR/Sensitivity): {tpr:.1%}")
+    log.info(f"  False Positive Rate (FPR):              {fpr:.1%}")
+    log.info(f"  True Negative Rate  (TNR/Specificity): {tnr:.1%}")
+    log.info(f"  False Negative Rate (FNR/Miss Rate):    {fnr:.1%}")
+    log.info(f"  Total correct: {tp+tn}/{total} ({(tp+tn)/total:.1%})")
+
+    # Save predictions
+    pred_output = {
+        "layer": best_layer_prelim,
+        "confusion_matrix": {"TP": tp, "FP": fp, "TN": tn, "FN": fn},
+        "rates": {"TPR": tpr, "FPR": fpr, "TNR": tnr, "FNR": fnr},
+        "predictions": predictions,
+    }
+    pred_path = os.path.join(results_dir, "exp02a_predictions.json")
+    with open(pred_path, "w") as f:
+        json.dump(pred_output, f, indent=2, ensure_ascii=False)
+    log.info(f"  Saved per-sample predictions → {pred_path}")
+
     # ── Summary ────────────────────────────────────────────────────────
     best_layer = max(
         [l for l in results if l != 0],
@@ -299,6 +401,8 @@ def main():
         "best_layer": best_layer,
         "best_accuracy": best_acc,
         "layer_0_accuracy": layer0_acc,
+        "confusion_matrix": {"TP": tp, "FP": fp, "TN": tn, "FN": fn},
+        "rates": {"TPR": tpr, "FPR": fpr, "TNR": tnr, "FNR": fnr},
         "results_per_layer": {str(k): v for k, v in results.items()},
         "cross_question_balanced": {str(k): v for k, v in cross_q.items()},
         "elapsed_seconds": time.time() - start,
