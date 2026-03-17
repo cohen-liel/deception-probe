@@ -14,7 +14,7 @@ This repository implements a systematic investigation of deceptive behavior in l
 | Lie vs. hallucination separation | **~100% accuracy** | The model's internal state differs fundamentally between lying and not knowing |
 | Cross-model transfer | **98–100%** (Llama ↔ Mistral) | Suggests a universal deception representation |
 | Inverted polarity (Qwen) | **~2% direct → ~98% flipped** | Qwen encodes deception with opposite polarity |
-| Deception types are orthogonal | **cosine ~0.05** | No single "lie direction" — sycophancy, instruction conflict, and authority pressure are distinct |
+| Deception types are orthogonal | **cosine ~0.05** | The *probing method* is universal, but the model uses distinct subspaces for different pressure types |
 
 ---
 
@@ -134,7 +134,7 @@ deception-probe/
 
 **Purpose:** Are all lies the same internally?
 
-**Key result:** Sycophancy, instruction conflict, and authority pressure produce nearly orthogonal lie directions (cosine similarity ~0.05). There is no single "truth direction" — contradicting the assumption of Burns et al. (2023) CCS.
+**Key result:** Sycophancy, instruction conflict, and authority pressure produce nearly orthogonal lie directions (cosine similarity ~0.05 vs. random baseline ~0.00 ± 0.02). This does **not** mean there is no deception signal — it means the model uses **distinct subspaces** for different types of social pressure. The *probing method* (linear classifier on hidden states) is universal and works for all types; the *directions* it finds are type-specific. This refines (rather than contradicts) Burns et al. (2023) CCS: there may not be a single "truth direction," but there is a learnable truth boundary for each deception context.
 
 ### Experiment 06 — Mechanistic Analysis
 
@@ -228,9 +228,11 @@ Results are saved as JSON files in the `results/` directory.
 
 - **No data leakage:** All probes use `sklearn.Pipeline` (StandardScaler + LogisticRegression), ensuring the scaler is fit only on training folds during cross-validation.
 - **Balanced accuracy:** All metrics use `balanced_accuracy_score` to handle class imbalance correctly.
-- **Robust answer matching:** Multi-level matching strategy (exact substring > all significant words) to avoid false positives.
+- **Robust answer matching:** Multi-level matching strategy (exact substring > all significant words) with **negation detection** — if the model says "I don't think it's the Peter Principle," this is correctly classified as NOT endorsing that answer.
 - **Random cosine baseline:** Cosine similarity between lie directions is compared against the expected similarity of random unit vectors in the same dimensionality.
 - **Procrustes on shared questions:** Cross-model alignment is fitted only on questions that both models answered, preventing information leakage.
+- **Multi-position token extraction:** Hidden states can be extracted from three positions: (1) first generated token (default), (2) last prompt token (pre-decision state), or (3) the specific answer token. Comparing across positions reveals when the deception signal first appears.
+- **Quantization awareness:** 4-bit NF4 quantization is used by default for VRAM efficiency. For mechanistic analysis (Exp 06), `bfloat16` precision is recommended to avoid noise in hidden states. See `load_model_and_tokenizer(use_bfloat16=True)`.
 
 ---
 

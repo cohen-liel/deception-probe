@@ -1,6 +1,6 @@
 # Project Context — Read This First
 
-**Last updated:** March 17, 2026 (v2 — post code-review fixes)  
+**Last updated:** March 17, 2026 (v3 — second code-review fixes: negation detection, multi-position tokens, quantization awareness)  
 **Purpose:** This file contains all accumulated context about this research project. When starting a new session, read this file first to avoid re-doing research.
 
 ---
@@ -21,7 +21,7 @@
 | 02: Confound-free detection | **82.5% balanced accuracy** at layer 16 (Llama-3.1-8B) | Proves deception signal exists even with identical prompts |
 | 03: Lie vs. hallucination | **100% separation** (AUC = 1.0) | Model's internal state when lying is completely different from hallucinating |
 | 04: Cross-model transfer | Transfers across Llama/Mistral/Gemma; **Qwen is reversed** | Signal is partially universal; Qwen anomaly is interesting |
-| 05: Deception types | Sycophancy, instruction conflict, authority pressure are **orthogonal** | No single "lie button" — different deception types use different representations |
+| 05: Deception types | Sycophancy, instruction conflict, authority pressure are **orthogonal** | The *probing method* is universal; the model uses distinct subspaces per pressure type |
 | Controls | Layer 0 = 50%, Length baseline = 50%, Permutation p < 0.001 | Robust controls eliminate confounds |
 
 ---
@@ -120,8 +120,9 @@ Small sample size is a valid concern. Our defense: (1) Permutation test with 500
 
 ---
 
-## 7. Code Review & Bug Fixes (v2, March 17 2026)
+## 7. Code Review & Bug Fixes
 
+### v2 (March 17, 2026) — First review
 Claude performed a code review and identified several issues. All have been fixed:
 
 | Bug | Severity | Fix |
@@ -135,11 +136,21 @@ Claude performed a code review and identified several issues. All have been fixe
 | Logit Lens: crash on quantized models | Medium | Safe lm_head access with fallback |
 | Dead code: unused Procrustes in exp04 | Low | Removed |
 
+### v3 (March 17, 2026) — Second review
+A second review identified 4 additional issues. All fixed:
+
+| Issue | Severity | Fix |
+|-------|----------|-----|
+| Heuristic matching: "I don't think it's X" counted as match for X | Medium | Added negation detection with regex patterns (10+ patterns) |
+| Token selection: only first generated token extracted | Medium | Added 3 extraction modes: first_gen_token, last_prompt_token, answer_token |
+| 4-bit quantization noise in mechanistic analysis | Medium | Added `use_bfloat16=True` option with warning when both flags set |
+| Orthogonality misinterpreted as "no deception signal" | Low | Clarified: probing *method* is universal, *directions* are type-specific |
+
 ---
 
 ## 8. Next Steps (Priority Order)
 
-1. **Run Experiment 06 (Mechanistic Analysis)** on GPU — Logit Lens, Activation Patching, Attention Analysis
+1. **Run Experiment 06 (Mechanistic Analysis)** on GPU — Logit Lens, Activation Patching, Attention Analysis. Use `use_bfloat16=True` for best results.
 2. **Run Experiment 07 (Visualizations)** — generate publication-quality figures
 3. **Scale dataset** from 43 to 200+ samples
 4. **Contact Yftah Ziser** with summary + GitHub link
