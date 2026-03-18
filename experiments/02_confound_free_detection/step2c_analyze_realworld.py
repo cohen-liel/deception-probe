@@ -281,21 +281,33 @@ def load_labeled_data(labels_path: str, hidden_path: str):
 # ══════════════════════════════════════════════════════════════════════════
 
 def run_per_layer_probe(hidden_states, labels):
-    """Train probe at each layer."""
+    """Train probe at each layer with dimensionality reduction.
+    
+    Uses TruncatedSVD inside the Pipeline to reduce 4096-dim hidden states
+    to 64 components before classification. This prevents curse-of-dimensionality
+    when n_samples << n_features, and is done inside CV to avoid data leakage.
+    """
     from sklearn.pipeline import Pipeline
     from sklearn.preprocessing import StandardScaler
     from sklearn.linear_model import LogisticRegression
     from sklearn.model_selection import cross_val_score
+    from sklearn.decomposition import TruncatedSVD
+
+    SVD_COMPONENTS = 64  # Reduce 4096 → 64 dims
 
     log.info("\n--- Per-Layer Probe Accuracy ---")
+    log.info(f"  (Using TruncatedSVD → {SVD_COMPONENTS} components inside CV)")
     results = {}
     best_layer = -1
     best_acc = 0.0
 
     for layer_idx in sorted(hidden_states.keys()):
         X = hidden_states[layer_idx]
+        n_components = min(SVD_COMPONENTS, X.shape[0] - 1, X.shape[1])
+
         pipe = Pipeline([
             ("scaler", StandardScaler()),
+            ("svd", TruncatedSVD(n_components=n_components, random_state=RANDOM_SEED)),
             ("clf", LogisticRegression(
                 max_iter=1000, class_weight="balanced", random_state=RANDOM_SEED,
             )),
@@ -357,6 +369,9 @@ def run_per_domain_analysis(hidden_states, labels, domains, best_layer):
     from sklearn.preprocessing import StandardScaler
     from sklearn.linear_model import LogisticRegression
     from sklearn.model_selection import cross_val_score
+    from sklearn.decomposition import TruncatedSVD
+
+    SVD_COMPONENTS = 64
 
     log.info("\n--- Per-Domain Analysis ---")
     X = hidden_states[best_layer]
@@ -380,8 +395,10 @@ def run_per_domain_analysis(hidden_states, labels, domains, best_layer):
         X_domain = X[mask]
         y_domain = labels[mask]
 
+        n_comp = min(SVD_COMPONENTS, X_domain.shape[0] - 1, X_domain.shape[1])
         pipe = Pipeline([
             ("scaler", StandardScaler()),
+            ("svd", TruncatedSVD(n_components=n_comp, random_state=RANDOM_SEED)),
             ("clf", LogisticRegression(
                 max_iter=1000, class_weight="balanced", random_state=RANDOM_SEED,
             )),
@@ -410,6 +427,9 @@ def run_per_pressure_analysis(hidden_states, labels, pressure_types, best_layer)
     from sklearn.preprocessing import StandardScaler
     from sklearn.linear_model import LogisticRegression
     from sklearn.model_selection import cross_val_score
+    from sklearn.decomposition import TruncatedSVD
+
+    SVD_COMPONENTS = 64
 
     log.info("\n--- Per-Pressure-Type Analysis ---")
     X = hidden_states[best_layer]
@@ -439,8 +459,10 @@ def run_per_pressure_analysis(hidden_states, labels, pressure_types, best_layer)
         X_sub = X[mask]
         y_sub = labels[mask]
 
+        n_comp = min(SVD_COMPONENTS, X_sub.shape[0] - 1, X_sub.shape[1])
         pipe = Pipeline([
             ("scaler", StandardScaler()),
+            ("svd", TruncatedSVD(n_components=n_comp, random_state=RANDOM_SEED)),
             ("clf", LogisticRegression(
                 max_iter=1000, class_weight="balanced", random_state=RANDOM_SEED,
             )),
@@ -469,6 +491,7 @@ def run_cross_domain_transfer(hidden_states, labels, domains, best_layer):
     from sklearn.preprocessing import StandardScaler
     from sklearn.linear_model import LogisticRegression
     from sklearn.metrics import balanced_accuracy_score
+    from sklearn.decomposition import TruncatedSVD
 
     log.info("\n--- Cross-Domain Transfer ---")
     X = hidden_states[best_layer]
@@ -486,6 +509,8 @@ def run_cross_domain_transfer(hidden_states, labels, domains, best_layer):
         log.info("  Not enough valid domains for cross-domain transfer")
         return {}
 
+    SVD_COMPONENTS = 64
+
     transfer_results = {}
     for test_domain in valid_domains:
         train_mask = np.array([d != test_domain for d in domains])
@@ -494,8 +519,10 @@ def run_cross_domain_transfer(hidden_states, labels, domains, best_layer):
         if len(np.unique(labels[train_mask])) < 2:
             continue
 
+        n_comp = min(SVD_COMPONENTS, train_mask.sum() - 1, X.shape[1])
         pipe = Pipeline([
             ("scaler", StandardScaler()),
+            ("svd", TruncatedSVD(n_components=n_comp, random_state=RANDOM_SEED)),
             ("clf", LogisticRegression(
                 max_iter=1000, class_weight="balanced", random_state=RANDOM_SEED,
             )),
@@ -542,9 +569,12 @@ def run_cross_phase_transfer(
     from sklearn.preprocessing import StandardScaler
     from sklearn.linear_model import LogisticRegression
     from sklearn.metrics import balanced_accuracy_score
+    from sklearn.decomposition import TruncatedSVD
+
+    SVD_COMPONENTS = 64
 
     log.info("\n" + "=" * 60)
-    log.info("CROSS-PHASE TRANSFER (Trivia ↔ Real-World)")
+    log.info("CROSS-PHASE TRANSFER (Trivia \u2194 Real-World)")
     log.info("=" * 60)
 
     if not os.path.exists(trivia_hs_path):
@@ -585,8 +615,10 @@ def run_cross_phase_transfer(
             continue
 
         # Direction 1: Train on trivia → test on real-world
+        n_comp = min(SVD_COMPONENTS, len(y_trivia) - 1, X_trivia.shape[1])
         pipe_t2r = Pipeline([
             ("scaler", StandardScaler()),
+            ("svd", TruncatedSVD(n_components=n_comp, random_state=RANDOM_SEED)),
             ("clf", LogisticRegression(
                 max_iter=1000, class_weight="balanced", random_state=RANDOM_SEED,
             )),
@@ -599,9 +631,11 @@ def run_cross_phase_transfer(
         preds_t2r_flipped = 1 - preds_t2r
         acc_t2r_flipped = balanced_accuracy_score(y_rw, preds_t2r_flipped)
 
-        # Direction 2: Train on real-world → test on trivia
+        # Direction 2: Train on real-world \u2192 test on trivia
+        n_comp_r = min(SVD_COMPONENTS, len(y_rw) - 1, X_rw.shape[1])
         pipe_r2t = Pipeline([
             ("scaler", StandardScaler()),
+            ("svd", TruncatedSVD(n_components=n_comp_r, random_state=RANDOM_SEED)),
             ("clf", LogisticRegression(
                 max_iter=1000, class_weight="balanced", random_state=RANDOM_SEED,
             )),
