@@ -1,8 +1,8 @@
 """
-Experiment 02, Step C — Real-World Probing & Cross-Phase Transfer
+Experiment 02, Step D — Real-World Probing & Cross-Phase Transfer
 ==================================================================
 PURPOSE:
-    1. Load pre-labeled responses from Step 2B (two-phase design)
+    1. Load pre-labeled responses from Step 2C (two-phase design)
        Labels are already assigned: "lied" or "resisted"
     2. Optionally refine labels with GPT-4.1-nano judge
     3. Train a linear probe on hidden states to detect deception
@@ -13,7 +13,7 @@ PURPOSE:
        — the KEY result showing universal deception detection
 
 LABELING:
-    Step 2B already provides labels based on the two-phase design:
+    Step 2C already provides labels based on the two-phase design:
     - "lied": model disclosed in Phase A (no pressure) but concealed in Phase B (with pressure)
     - "resisted": model disclosed in both phases
 
@@ -29,23 +29,23 @@ ANALYSES:
     7. Cross-phase transfer (train on trivia ↔ test on real-world)
 
 INPUT:
-    results/exp02b_responses.json       — from Step 2B (with labels)
-    results/exp02b_hidden_states.npz    — from Step 2B (Phase B hidden states)
+    results/exp02c_responses.json       — from Step 2C (with labels)
+    results/exp02c_hidden_states.npz    — from Step 2C (Phase B hidden states)
     results/exp02a_hidden_states.npz    — from Step 2A (for cross-phase)
 
 OUTPUT:
-    results/exp02b_labeled.json         — refined labeled responses
-    results/exp02c_probe_results.json   — all probe results
-    results/exp02c_cross_phase.json     — cross-phase transfer results
+    results/exp02c_labeled.json         — refined labeled responses
+    results/exp02d_probe_results.json   — all probe results
+    results/exp02d_cross_phase.json     — cross-phase transfer results
 
 USAGE:
-    python experiments/02_confound_free_detection/step2c_analyze_realworld.py
+    python experiments/02_confound_free_detection/step2d_analyze_realworld.py
 
     # Refine labels with LLM judge:
-    python step2c_analyze_realworld.py --refine-labels
+    python step2d_analyze_realworld.py --refine-labels
 
     # Use keyword fallback instead of LLM:
-    python step2c_analyze_realworld.py --refine-labels --label-method keywords
+    python step2d_analyze_realworld.py --refine-labels --label-method keywords
 
 RUNTIME: ~15 minutes (labeling ~10 min if refining, probing ~5 min)
 """
@@ -71,7 +71,7 @@ from src.utils import (
     save_results,
 )
 
-log = setup_logger("exp02c")
+log = setup_logger("exp02d")
 
 RANDOM_SEED = 42
 N_PERMUTATIONS = 500
@@ -693,17 +693,17 @@ def run_cross_phase_transfer(
 
 def main():
     parser = argparse.ArgumentParser(
-        description="Step 2C: Probe + Cross-Phase Transfer (Two-Phase Design)"
+        description="Step 2D: Probe + Cross-Phase Transfer (Two-Phase Design)"
     )
     parser.add_argument("--refine-labels", action="store_true",
-                        help="Refine Step 2B labels with LLM judge")
+                        help="Refine Step 2C labels with LLM judge")
     parser.add_argument("--label-method", type=str, default="llm",
                         choices=["llm", "keywords"],
                         help="Refinement method: llm (GPT-4.1-nano) or keywords")
-    parser.add_argument("--responses", type=str, default="results/exp02b_responses.json",
-                        help="Path to responses JSON from Step 2B")
-    parser.add_argument("--hidden", type=str, default="results/exp02b_hidden_states.npz",
-                        help="Path to hidden states from Step 2B")
+    parser.add_argument("--responses", type=str, default="results/exp02c_responses.json",
+                        help="Path to responses JSON from Step 2C")
+    parser.add_argument("--hidden", type=str, default="results/exp02c_hidden_states.npz",
+                        help="Path to hidden states from Step 2C")
     parser.add_argument("--trivia-hs", type=str, default="results/exp02a_hidden_states.npz",
                         help="Path to trivia hidden states from Step 2A")
     args = parser.parse_args()
@@ -715,10 +715,10 @@ def main():
                    if not os.path.isabs(args.hidden) else args.hidden)
     trivia_hs_path = (os.path.join(REPO_ROOT, args.trivia_hs)
                       if not os.path.isabs(args.trivia_hs) else args.trivia_hs)
-    labeled_path = os.path.join(REPO_ROOT, "results", "exp02b_labeled.json")
+    labeled_path = os.path.join(REPO_ROOT, "results", "exp02c_labeled.json")
 
     log.info("=" * 60)
-    log.info("EXPERIMENT 02C: Real-World Analysis + Cross-Phase Transfer")
+    log.info("EXPERIMENT 02D: Real-World Analysis + Cross-Phase Transfer")
     log.info("  Design: Two-Phase (no pressure → with pressure)")
     log.info("=" * 60)
 
@@ -778,7 +778,7 @@ def main():
     os.makedirs(results_dir, exist_ok=True)
 
     all_results = {
-        "experiment": "02c_realworld_analysis",
+        "experiment": "02d_realworld_analysis",
         "description": "Two-phase real-world deception probing + cross-phase transfer.",
         "design": "Phase A (no pressure) → Phase B (with pressure)",
         "best_layer": best_layer,
@@ -797,15 +797,15 @@ def main():
         "elapsed_seconds": time.time() - start_time,
     }
 
-    save_results(all_results, os.path.join(results_dir, "exp02c_probe_results.json"))
-    log.info(f"\nSaved results → results/exp02c_probe_results.json")
+    save_results(all_results, os.path.join(results_dir, "exp02d_probe_results.json"))
+    log.info(f"\nSaved results → results/exp02d_probe_results.json")
 
     if cross_phase:
         save_results(
             {"cross_phase_transfer": {str(k): v for k, v in cross_phase.items()}},
-            os.path.join(results_dir, "exp02c_cross_phase.json"),
+            os.path.join(results_dir, "exp02d_cross_phase.json"),
         )
-        log.info(f"Saved cross-phase → results/exp02c_cross_phase.json")
+        log.info(f"Saved cross-phase → results/exp02d_cross_phase.json")
 
     # ── Final summary ──
     elapsed = time.time() - start_time
