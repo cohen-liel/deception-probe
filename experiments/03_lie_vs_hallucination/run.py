@@ -71,7 +71,7 @@ from src.utils import (
 # ── Configuration ──────────────────────────────────────────────────────────
 MODEL_NAME = "meta-llama/Llama-3.1-8B-Instruct"
 PROBE_LAYERS = [0, 2, 4, 6, 8, 10, 12, 14, 15, 16, 17, 18, 20, 22, 24, 26, 28, 30, 31]
-MAX_QUESTIONS = 500
+MAX_QUESTIONS = 2500
 MAX_NEW_TOKENS = 80
 N_PERMUTATIONS = 500
 RANDOM_SEED = 42
