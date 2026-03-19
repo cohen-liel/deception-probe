@@ -359,6 +359,12 @@ def train_token_probe(train_samples, test_samples, available_layers):
 # PART 4: STREAMING SIMULATION — The Product Demo
 # ══════════════════════════════════════════════════════════════════════════
 
+# Aggregation methods for sentence-level decision from token scores.
+# Based on Goldowsky-Dill et al. (ICML 2025) and StefanHex (LessWrong 2025).
+# Literature shows MEAN is the standard approach; MAX is too sensitive.
+SENTENCE_AGGREGATION_METHODS = ["mean", "p75", "p90", "max", "frac_above"]
+FRACTION_THRESHOLD = 0.10  # At least 10% of tokens must be above threshold
+
 def run_streaming_simulation(test_samples, best_probe, best_layer,
                               window_sizes=SLIDING_WINDOW_SIZES):
     """
@@ -368,10 +374,17 @@ def run_streaming_simulation(test_samples, best_probe, best_layer,
     1. Get hidden state for token_i
     2. Run probe → P(deceptive)
     3. Apply sliding window smoothing
-    4. Check if deception threshold is crossed
+    4. Aggregate into sentence-level decision using multiple methods:
+       - MEAN: average score across all tokens (Goldowsky-Dill et al. 2025)
+       - P75/P90: 75th/90th percentile of token scores
+       - MAX: maximum token score (original, known to over-trigger)
+       - FRAC_ABOVE: fraction of tokens above threshold (must exceed min %)
     5. Record: when was deception first detected? How accurate?
 
-    This proves the probe can work in production without ground truth.
+    References:
+        Goldowsky-Dill et al. (ICML 2025) — "We take the mean across tokens"
+        StefanHex (LessWrong 2025) — token-level probe + mean aggregation
+        Parrack et al. (2025) — benchmarking aggregation strategies
     """
     from sklearn.metrics import balanced_accuracy_score
 
@@ -381,6 +394,8 @@ def run_streaming_simulation(test_samples, best_probe, best_layer,
     log.info(f"  Processing {len(test_samples)} test samples token-by-token")
     log.info(f"  Window sizes: {window_sizes}")
     log.info(f"  Deception threshold: {DECEPTION_THRESHOLD}")
+    log.info(f"  Aggregation methods: {SENTENCE_AGGREGATION_METHODS}")
+    log.info(f"  Fraction threshold: {FRACTION_THRESHOLD:.0%}")
 
     simulation_results = []
 
@@ -401,6 +416,9 @@ def run_streaming_simulation(test_samples, best_probe, best_layer,
 
         token_scores = np.array(token_scores)
 
+        # Ground truth for this sample
+        true_lied = 1 if sample["sentence_label"] == "lied" else 0
+
         # --- Sliding window smoothing ---
         window_results = {}
         for w in window_sizes:
@@ -409,31 +427,41 @@ def run_streaming_simulation(test_samples, best_probe, best_layer,
                 start = max(0, t - w + 1)
                 smoothed[t] = token_scores[start:t+1].mean()
 
-            # When is deception first detected?
+            # When is deception first detected? (using mean threshold)
             first_detection = -1
             for t in range(n_tokens):
                 if smoothed[t] >= DECEPTION_THRESHOLD:
                     first_detection = t
                     break
 
-            # Sentence-level decision: max score over all tokens
+            # Compute multiple aggregation scores
             max_score = float(smoothed.max())
             mean_score = float(smoothed.mean())
+            p75_score = float(np.percentile(smoothed, 75))
+            p90_score = float(np.percentile(smoothed, 90))
+            frac_above = float((smoothed >= DECEPTION_THRESHOLD).mean())
 
-            # Binary sentence prediction: any token above threshold?
-            sentence_pred = 1 if max_score >= DECEPTION_THRESHOLD else 0
-            true_sentence = 0 if sample["sentence_label"] == "lied" else 1
-            # Note: sentence_pred=1 means "detected deception" → label should be "lied"=0
-            # So we flip: predicted_lied = sentence_pred, true_lied = (1 - true_sentence)
-            predicted_lied = sentence_pred
-            true_lied = 1 - true_sentence
+            # Sentence-level predictions using each aggregation method
+            agg_preds = {
+                "mean":       1 if mean_score >= DECEPTION_THRESHOLD else 0,
+                "p75":        1 if p75_score >= DECEPTION_THRESHOLD else 0,
+                "p90":        1 if p90_score >= DECEPTION_THRESHOLD else 0,
+                "max":        1 if max_score >= DECEPTION_THRESHOLD else 0,
+                "frac_above": 1 if frac_above >= FRACTION_THRESHOLD else 0,
+            }
 
             window_results[w] = {
                 "max_score": max_score,
                 "mean_score": mean_score,
+                "p75_score": p75_score,
+                "p90_score": p90_score,
+                "frac_above_threshold": frac_above,
                 "first_detection_token": first_detection,
                 "first_detection_pct": float(first_detection / n_tokens) if first_detection >= 0 else -1,
-                "sentence_correct": predicted_lied == true_lied,
+                "agg_predictions": agg_preds,
+                "agg_correct": {m: (agg_preds[m] == true_lied) for m in agg_preds},
+                # Keep backward compat: sentence_correct uses MEAN (the research standard)
+                "sentence_correct": agg_preds["mean"] == true_lied,
             }
 
         # --- Per-token accuracy for this sample ---
@@ -455,50 +483,47 @@ def run_streaming_simulation(test_samples, best_probe, best_layer,
         simulation_results.append(sim_entry)
 
     # --- Aggregate metrics ---
-    log.info("\n  --- Streaming Results ---")
+    log.info("\n  --- Streaming Results (by aggregation method) ---")
 
     for w in window_sizes:
-        correct = sum(
-            1 for s in simulation_results
-            if s["window_results"][str(w)]["sentence_correct"]
-        )
-        total = len(simulation_results)
-        acc = correct / total if total > 0 else 0
+        log.info(f"\n  Window={w}:")
+        for method in SENTENCE_AGGREGATION_METHODS:
+            lied_correct = sum(
+                1 for s in simulation_results
+                if s["sentence_label"] == "lied"
+                and s["window_results"][str(w)]["agg_correct"][method]
+            )
+            lied_total = sum(1 for s in simulation_results if s["sentence_label"] == "lied")
 
-        # Average first detection position (for correctly detected lies)
+            resisted_correct = sum(
+                1 for s in simulation_results
+                if s["sentence_label"] == "resisted"
+                and s["window_results"][str(w)]["agg_correct"][method]
+            )
+            resisted_total = sum(1 for s in simulation_results if s["sentence_label"] == "resisted")
+
+            total_correct = lied_correct + resisted_correct
+            total = lied_total + resisted_total
+            # Balanced accuracy = (TPR + TNR) / 2
+            tpr = lied_correct / max(lied_total, 1)
+            tnr = resisted_correct / max(resisted_total, 1)
+            bal_acc = (tpr + tnr) / 2
+
+            log.info(
+                f"    {method:12s}: bal_acc={bal_acc:.3f} | "
+                f"lied={lied_correct}/{lied_total} ({tpr:.1%}) | "
+                f"resisted={resisted_correct}/{resisted_total} ({tnr:.1%})"
+            )
+
+        # Average first detection position (for lies detected by mean method)
         detections = [
             s["window_results"][str(w)]["first_detection_pct"]
             for s in simulation_results
             if s["sentence_label"] == "lied"
             and s["window_results"][str(w)]["first_detection_token"] >= 0
         ]
-        avg_detection_pct = np.mean(detections) if detections else -1
-
-        # Separate accuracy for lied vs resisted
-        lied_correct = sum(
-            1 for s in simulation_results
-            if s["sentence_label"] == "lied"
-            and s["window_results"][str(w)]["sentence_correct"]
-        )
-        lied_total = sum(1 for s in simulation_results if s["sentence_label"] == "lied")
-
-        resisted_correct = sum(
-            1 for s in simulation_results
-            if s["sentence_label"] == "resisted"
-            and s["window_results"][str(w)]["sentence_correct"]
-        )
-        resisted_total = sum(1 for s in simulation_results if s["sentence_label"] == "resisted")
-
-        log.info(
-            f"  Window={w:2d}: sentence_acc={acc:.3f} | "
-            f"lied={lied_correct}/{lied_total} | "
-            f"resisted={resisted_correct}/{resisted_total} | "
-            f"avg_detection_at={avg_detection_pct:.1%}" if avg_detection_pct >= 0
-            else f"  Window={w:2d}: sentence_acc={acc:.3f} | "
-                 f"lied={lied_correct}/{lied_total} | "
-                 f"resisted={resisted_correct}/{resisted_total} | "
-                 f"no detections"
-        )
+        if detections:
+            log.info(f"    avg lie detection at: {np.mean(detections):.1%} of response")
 
     # Mean token-level accuracy
     mean_token_acc = np.mean([s["token_accuracy"] for s in simulation_results])
@@ -511,10 +536,14 @@ def run_streaming_simulation(test_samples, best_probe, best_layer,
 # PART 5: SENTENCE-LEVEL PROBE (Divergence Token)
 # ══════════════════════════════════════════════════════════════════════════
 
-def run_sentence_probe(sentence_hs_path: str):
+def run_sentence_probe(sentence_hs_path: str, token_labels_path: str = None):
     """
     Train sentence-level probe using divergence token hidden states
-    from Step 2C. Compare with random baseline.
+    from Step 2C.
+
+    IMPORTANT: The sentence_hs.npz may contain stale labels from the
+    keyword-based classifier (before LLM judge). If token_labels_path
+    is provided, we use the updated labels from the LLM judge instead.
     """
     from sklearn.pipeline import Pipeline
     from sklearn.preprocessing import StandardScaler
@@ -531,11 +560,40 @@ def run_sentence_probe(sentence_hs_path: str):
         return {}
 
     data = np.load(sentence_hs_path)
-    labels = data["labels"]
+    original_labels = data["labels"]
+
+    # Use updated labels from LLM judge if available
+    labels = original_labels.copy()
+    if token_labels_path and os.path.exists(token_labels_path):
+        with open(token_labels_path) as f:
+            token_labels_data = json.load(f)
+
+        # Build mapping: sample_id → sentence_label from LLM judge
+        updated_count = 0
+        for i, sample_id in enumerate(data.get("sample_ids", [])):
+            sid = str(sample_id) if not isinstance(sample_id, str) else sample_id
+            if sid in token_labels_data:
+                new_label = token_labels_data[sid].get("sentence_label", None)
+                if new_label == "lied":
+                    new_val = 0
+                elif new_label == "resisted":
+                    new_val = 1
+                else:
+                    continue
+                if labels[i] != new_val:
+                    updated_count += 1
+                    labels[i] = new_val
+
+        if updated_count > 0:
+            log.info(f"  Updated {updated_count} labels from LLM judge")
+        else:
+            log.info(f"  No label updates (LLM judge labels match or no sample_ids in npz)")
 
     n_lied = (labels == 0).sum()
     n_resisted = (labels == 1).sum()
     log.info(f"  Samples: {len(labels)} (lied={n_lied}, resisted={n_resisted})")
+    log.info(f"  (Original from npz: lied={(original_labels==0).sum()}, "
+             f"resisted={(original_labels==1).sum()})")
 
     if n_lied < 5 or n_resisted < 5:
         log.warning("  Too few samples for sentence probe")
@@ -593,8 +651,12 @@ def run_cross_phase_transfer(test_samples, best_layer, trivia_hs_path):
     Train probe on trivia hidden states (Step 2A) and test on real-world
     token hidden states. This tests if the deception signal is universal.
 
-    For fair comparison, we use the DIVERGENCE TOKEN from real-world
-    (one vector per sample) and compare with trivia's first_gen_token.
+    Following Goldowsky-Dill et al. (ICML 2025), we use the MEAN of all
+    token hidden states as the sentence-level representation. This is the
+    standard approach in the literature and provides a fair comparison
+    with trivia's first_gen_token vectors.
+
+    We also test with first-token and divergence-token for comparison.
     """
     from sklearn.pipeline import Pipeline
     from sklearn.preprocessing import StandardScaler
@@ -612,30 +674,46 @@ def run_cross_phase_transfer(test_samples, best_layer, trivia_hs_path):
 
     trivia_data = np.load(trivia_hs_path)
 
-    # Build real-world sentence-level vectors from test samples
-    # Use mean of deceptive tokens (for lied) or mean of all tokens (for resisted)
-    rw_vectors = []
-    rw_labels = []
+    # Build real-world sentence-level vectors using multiple strategies
+    # Strategy 1: MEAN of all tokens (Goldowsky-Dill standard)
+    # Strategy 2: FIRST token (comparable to trivia's first_gen_token)
+    # Strategy 3: DIVERGENCE token (first deceptive token for lied, middle for resisted)
+    rw_strategies = {
+        "mean_all": {"vectors": [], "labels": []},
+        "first_token": {"vectors": [], "labels": []},
+        "divergence": {"vectors": [], "labels": []},
+    }
 
     for s in test_samples:
         if best_layer not in s["token_hs"]:
             continue
         hs = s["token_hs"][best_layer]
         token_labs = s["token_labels"][:hs.shape[0]]
+        label = 0 if s["sentence_label"] == "lied" else 1
 
+        # Strategy 1: Mean of all tokens
+        rw_strategies["mean_all"]["vectors"].append(hs.mean(axis=0))
+        rw_strategies["mean_all"]["labels"].append(label)
+
+        # Strategy 2: First token
+        rw_strategies["first_token"]["vectors"].append(hs[0])
+        rw_strategies["first_token"]["labels"].append(label)
+
+        # Strategy 3: Divergence token
         if s["sentence_label"] == "lied":
-            # Use first deceptive token (divergence point)
             dec_idx = np.where(token_labs == 1)[0]
             if len(dec_idx) > 0:
                 vec = hs[dec_idx[0]]
             else:
-                vec = hs[hs.shape[0] // 2]  # fallback: middle
-            rw_labels.append(0)
+                vec = hs[hs.shape[0] // 2]
         else:
-            vec = hs[hs.shape[0] // 2]  # middle token for resisted
-            rw_labels.append(1)
+            vec = hs[hs.shape[0] // 2]
+        rw_strategies["divergence"]["vectors"].append(vec)
+        rw_strategies["divergence"]["labels"].append(label)
 
-        rw_vectors.append(vec)
+    # Use mean_all as the primary strategy (following literature)
+    rw_vectors = rw_strategies["mean_all"]["vectors"]
+    rw_labels = rw_strategies["mean_all"]["labels"]
 
     if len(rw_vectors) < 10:
         log.warning("  Too few real-world test samples")
@@ -700,7 +778,24 @@ def run_cross_phase_transfer(test_samples, best_layer, trivia_hs_path):
         }
 
         flip_tag = " (FLIPPED)" if flipped else ""
-        log.info(f"  Layer {layer:2d}: Trivia→RW = {best_acc_dir:.3f}{flip_tag}")
+        log.info(f"  Layer {layer:2d}: Trivia→RW [mean_all] = {best_acc_dir:.3f}{flip_tag}")
+
+        # Also test with other strategies for comparison
+        for strat_name in ["first_token", "divergence"]:
+            strat_vecs = rw_strategies[strat_name]["vectors"]
+            strat_labs = rw_strategies[strat_name]["labels"]
+            if len(strat_vecs) < 10:
+                continue
+            X_strat = np.array(strat_vecs)
+            y_strat = np.array(strat_labs)
+            if X_trivia.shape[1] != X_strat.shape[1]:
+                continue
+            preds_s = pipe.predict(X_strat)
+            acc_s = balanced_accuracy_score(y_strat, preds_s)
+            acc_s_flip = balanced_accuracy_score(y_strat, 1 - preds_s)
+            best_s = max(acc_s, acc_s_flip)
+            results[layer][f"trivia_to_rw_{strat_name}"] = float(best_s)
+            log.info(f"           [{strat_name:12s}] = {best_s:.3f}")
 
     if results:
         best_transfer_layer = max(results, key=lambda l: results[l]["best"])
@@ -800,7 +895,8 @@ def main():
     )
 
     # ── Part 5: Sentence-level probe (divergence token) ──
-    sentence_results = run_sentence_probe(sentence_hs_path)
+    # Pass token_labels_path so sentence probe uses updated LLM judge labels
+    sentence_results = run_sentence_probe(sentence_hs_path, token_labels_path)
 
     # ── Part 6: Cross-phase transfer ──
     cross_phase = {}
@@ -850,6 +946,8 @@ def main():
         "experiment": "02d_streaming_simulation",
         "description": "Streaming polygraph simulation — token-by-token deception detection",
         "threshold": DECEPTION_THRESHOLD,
+        "fraction_threshold": FRACTION_THRESHOLD,
+        "aggregation_methods": SENTENCE_AGGREGATION_METHODS,
         "window_sizes": SLIDING_WINDOW_SIZES,
         "n_test_samples": len(streaming_results),
         "samples": streaming_summary,
@@ -887,15 +985,27 @@ def main():
         log.info(f"    Recall:            {tr['recall']:.3f}")
         log.info(f"    F1:                {tr['f1']:.3f}")
 
-    # Streaming summary
+    # Streaming summary — show all aggregation methods for best window
     if streaming_results:
-        for w in SLIDING_WINDOW_SIZES:
-            correct = sum(
+        log.info(f"  STREAMING (by aggregation, window=5):")
+        w = 5
+        for method in SENTENCE_AGGREGATION_METHODS:
+            lied_ok = sum(
                 1 for s in streaming_results
-                if s["window_results"][str(w)]["sentence_correct"]
+                if s["sentence_label"] == "lied"
+                and s["window_results"][str(w)]["agg_correct"][method]
             )
-            total = len(streaming_results)
-            log.info(f"  STREAMING (window={w}): {correct}/{total} = {correct/total:.3f}")
+            lied_n = sum(1 for s in streaming_results if s["sentence_label"] == "lied")
+            res_ok = sum(
+                1 for s in streaming_results
+                if s["sentence_label"] == "resisted"
+                and s["window_results"][str(w)]["agg_correct"][method]
+            )
+            res_n = sum(1 for s in streaming_results if s["sentence_label"] == "resisted")
+            tpr = lied_ok / max(lied_n, 1)
+            tnr = res_ok / max(res_n, 1)
+            bal = (tpr + tnr) / 2
+            log.info(f"    {method:12s}: bal_acc={bal:.3f} | lied={lied_ok}/{lied_n} | resisted={res_ok}/{res_n}")
 
     # Sentence probe summary
     if sentence_results:
