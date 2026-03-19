@@ -694,7 +694,7 @@ def run_cross_phase_transfer(test_samples, best_layer, trivia_hs_path):
             "trivia_to_realworld": float(acc),
             "trivia_to_realworld_flipped": float(acc_flipped),
             "best": float(best_acc_dir),
-            "polarity_flipped": flipped,
+            "polarity_flipped": bool(flipped),
             "n_trivia": int(len(y_trivia)),
             "n_realworld": int(len(y_rw)),
         }
