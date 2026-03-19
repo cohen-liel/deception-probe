@@ -1,0 +1,106 @@
+{
+  "experiment": "02d_cross_phase_transfer",
+  "description": "Train on trivia (2A) \u2192 test on real-world (2C)",
+  "results": {
+    "0": {
+      "trivia_to_realworld": 0.5,
+      "trivia_to_realworld_flipped": 0.5,
+      "best": 0.5,
+      "polarity_flipped": false,
+      "n_trivia": 198,
+      "n_realworld": 183,
+      "trivia_to_rw_first_token": 0.5,
+      "trivia_to_rw_divergence": 0.5
+    },
+    "8": {
+      "trivia_to_realworld": 0.5,
+      "trivia_to_realworld_flipped": 0.5,
+      "best": 0.5,
+      "polarity_flipped": false,
+      "n_trivia": 198,
+      "n_realworld": 183,
+      "trivia_to_rw_first_token": 0.5,
+      "trivia_to_rw_divergence": 0.5
+    },
+    "12": {
+      "trivia_to_realworld": 0.5,
+      "trivia_to_realworld_flipped": 0.5,
+      "best": 0.5,
+      "polarity_flipped": false,
+      "n_trivia": 198,
+      "n_realworld": 183,
+      "trivia_to_rw_first_token": 0.5092568448500652,
+      "trivia_to_rw_divergence": 0.5084745762711864
+    },
+    "14": {
+      "trivia_to_realworld": 0.5,
+      "trivia_to_realworld_flipped": 0.5,
+      "best": 0.5,
+      "polarity_flipped": false,
+      "n_trivia": 198,
+      "n_realworld": 183,
+      "trivia_to_rw_first_token": 0.5,
+      "trivia_to_rw_divergence": 0.5
+    },
+    "15": {
+      "trivia_to_realworld": 0.5,
+      "trivia_to_realworld_flipped": 0.5,
+      "best": 0.5,
+      "polarity_flipped": false,
+      "n_trivia": 198,
+      "n_realworld": 183,
+      "trivia_to_rw_first_token": 0.5,
+      "trivia_to_rw_divergence": 0.5
+    },
+    "16": {
+      "trivia_to_realworld": 0.5,
+      "trivia_to_realworld_flipped": 0.5,
+      "best": 0.5,
+      "polarity_flipped": false,
+      "n_trivia": 198,
+      "n_realworld": 183,
+      "trivia_to_rw_first_token": 0.5,
+      "trivia_to_rw_divergence": 0.5042372881355932
+    },
+    "17": {
+      "trivia_to_realworld": 0.5,
+      "trivia_to_realworld_flipped": 0.5,
+      "best": 0.5,
+      "polarity_flipped": false,
+      "n_trivia": 198,
+      "n_realworld": 183,
+      "trivia_to_rw_first_token": 0.5,
+      "trivia_to_rw_divergence": 0.5
+    },
+    "18": {
+      "trivia_to_realworld": 0.5,
+      "trivia_to_realworld_flipped": 0.5,
+      "best": 0.5,
+      "polarity_flipped": false,
+      "n_trivia": 198,
+      "n_realworld": 183,
+      "trivia_to_rw_first_token": 0.5,
+      "trivia_to_rw_divergence": 0.5
+    },
+    "20": {
+      "trivia_to_realworld": 0.5,
+      "trivia_to_realworld_flipped": 0.5,
+      "best": 0.5,
+      "polarity_flipped": false,
+      "n_trivia": 198,
+      "n_realworld": 183,
+      "trivia_to_rw_first_token": 0.5,
+      "trivia_to_rw_divergence": 0.5
+    },
+    "24": {
+      "trivia_to_realworld": 0.5,
+      "trivia_to_realworld_flipped": 0.5,
+      "best": 0.5,
+      "polarity_flipped": false,
+      "n_trivia": 198,
+      "n_realworld": 183,
+      "trivia_to_rw_first_token": 0.5,
+      "trivia_to_rw_divergence": 0.5
+    }
+  }
+}

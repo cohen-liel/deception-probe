@@ -1,0 +1,82 @@
+{
+  "experiment": "02d_token_level_probe",
+  "description": "Token-level deception probe with streaming simulation",
+  "best_layer": 12,
+  "token_probe_results": {
+    "12": {
+      "balanced_accuracy": 0.6920689794104198,
+      "precision": 0.2923522715512781,
+      "recall": 0.6230701367445964,
+      "f1": 0.3979714024089596,
+      "n_train_tokens": 132569,
+      "n_test_tokens": 33153,
+      "n_train_deceptive": 18581,
+      "n_test_deceptive": 4534
+    },
+    "14": {
+      "balanced_accuracy": 0.6816879598820412,
+      "precision": 0.2917711171662125,
+      "recall": 0.5904278782531981,
+      "f1": 0.390546356408199,
+      "n_train_tokens": 132569,
+      "n_test_tokens": 33153,
+      "n_train_deceptive": 18581,
+      "n_test_deceptive": 4534
+    },
+    "15": {
+      "balanced_accuracy": 0.6868196064712377,
+      "precision": 0.2936695278969957,
+      "recall": 0.6036612262902514,
+      "f1": 0.39512054280352243,
+      "n_train_tokens": 132569,
+      "n_test_tokens": 33153,
+      "n_train_deceptive": 18581,
+      "n_test_deceptive": 4534
+    },
+    "16": {
+      "balanced_accuracy": 0.6830737298798031,
+      "precision": 0.2962385933674605,
+      "recall": 0.5871195412439347,
+      "f1": 0.3937869822485207,
+      "n_train_tokens": 132569,
+      "n_test_tokens": 33153,
+      "n_train_deceptive": 18581,
+      "n_test_deceptive": 4534
+    },
+    "18": {
+      "balanced_accuracy": 0.6794737242200602,
+      "precision": 0.29119489941739035,
+      "recall": 0.5842523158359065,
+      "f1": 0.3886728779986795,
+      "n_train_tokens": 132569,
+      "n_test_tokens": 33153,
+      "n_train_deceptive": 18581,
+      "n_test_deceptive": 4534
+    }
+  },
+  "sentence_probe_results": {
+    "12": {
+      "mean": 0.70203007518797,
+      "std": 0.05729790993876857
+    },
+    "14": {
+      "mean": 0.7285714285714285,
+      "std": 0.0581541303562738
+    },
+    "15": {
+      "mean": 0.719548872180451,
+      "std": 0.07520499055468574
+    },
+    "16": {
+      "mean": 0.7193082706766918,
+      "std": 0.061868276565645725
+    },
+    "18": {
+      "mean": 0.7050526315789473,
+      "std": 0.07506087604216083
+    }
+  },
+  "n_train_samples": 732,
+  "n_test_samples": 183,
+  "elapsed_seconds": 164.74901294708252
+}
