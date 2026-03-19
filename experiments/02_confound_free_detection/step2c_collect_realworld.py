@@ -440,7 +440,11 @@ def generate_no_hidden(model, tokenizer, system_prompt: str, user_prompt: str):
             temperature=1.0,
         )
 
-    generated_ids = outputs.sequences[0][input_len:]
+    # model.generate() without return_dict_in_generate returns a plain tensor
+    if hasattr(outputs, 'sequences'):
+        generated_ids = outputs.sequences[0][input_len:]
+    else:
+        generated_ids = outputs[0][input_len:]
     response = tokenizer.decode(generated_ids, skip_special_tokens=True).strip()
 
     del outputs
