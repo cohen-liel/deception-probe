@@ -52,9 +52,16 @@ DATASET: experiments/02_confound_free_detection/scenarios_v2.json
 MODEL:   meta-llama/Llama-3.1-8B-Instruct (4-bit quantized)
 
 USAGE (Colab with GPU):
+    # Part 1 — Colab (GPU, no API key needed):
+    %run experiments/02_confound_free_detection/step2c_collect_realworld.py --skip-llm-judge
+    
+    # Part 2 — Run LLM labeling separately (needs OPENAI_API_KEY):
+    %run experiments/02_confound_free_detection/step2c_label.py
+
+    # Or all-in-one if you have an API key:
     %run experiments/02_confound_free_detection/step2c_collect_realworld.py
 
-RUNTIME: ~4-5 hours on T4 (two passes + LLM labeling)
+RUNTIME: ~3-4 hours on T4 (two passes), +10 min for LLM labeling
 """
 
 import os
@@ -84,6 +91,7 @@ if REPO_ROOT not in sys.path:
     sys.path.insert(0, REPO_ROOT)
 
 from src.utils import setup_logger, load_model_and_tokenizer
+import argparse
 
 # ---------------------------------------------------------------------------
 # Configuration
@@ -462,13 +470,19 @@ def check_disclosure_keywords(response: str, ground_truth: str) -> bool:
 # Main collection loop
 # ---------------------------------------------------------------------------
 def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--skip-llm-judge", action="store_true",
+                        help="Skip LLM judge labeling (run step2c_label.py separately)")
+    args, _ = parser.parse_known_args()
+    SKIP_LLM = args.skip_llm_judge
+
     log.info("=" * 70)
     log.info("EXPERIMENT 02C: Token-Level Deception Data Collection")
     log.info("=" * 70)
     log.info(f"  Model: {MODEL_NAME}")
     log.info(f"  Design: Phase A (no pressure) → Phase B (with pressure)")
     log.info(f"  Hidden states: ALL tokens × {len(TARGET_LAYERS)} layers {TARGET_LAYERS}")
-    log.info(f"  Labeling: LLM judge (sentence + token level)")
+    log.info(f"  Labeling: {'KEYWORD ONLY (--skip-llm-judge)' if SKIP_LLM else 'LLM judge (sentence + token level)'}")
     log.info(f"  Save: incremental to disk (one sample at a time)")
     log.info("=" * 70)
 
@@ -623,87 +637,116 @@ def main():
     # ==================================================================
     # PHASE C — LLM Judge Labeling (Sentence + Token Level)
     # ==================================================================
-    log.info("\n" + "=" * 60)
-    log.info("PHASE C: LLM Judge Labeling")
-    log.info("  1. Sentence-level: disclosed or concealed?")
-    log.info("  2. Token-level: which tokens are deceptive?")
-    log.info("=" * 60)
+    if SKIP_LLM:
+        log.info("\n" + "=" * 60)
+        log.info("PHASE C: SKIPPED (--skip-llm-judge)")
+        log.info("  Using keyword labels only. Run step2c_label.py for LLM labeling.")
+        log.info("=" * 60)
 
-    token_labels_data = []
-    label_start = time.time()
+        # Use keyword labels as final labels
+        token_labels_data = []
+        for entry in responses_data:
+            entry["label"] = entry["label_keyword"]
+            entry["disclosed_llm"] = None
+            entry["judge_confidence"] = "skipped"
+            entry["judge_reasoning"] = "LLM judge skipped"
+            entry["deception_summary"] = ""
+            entry["deceptive_spans"] = []
+            token_labels_data.append({
+                "sample_id": entry["sample_id"],
+                "label": entry["label"],
+                "n_tokens": entry["n_gen_tokens"],
+                "token_labels": [0] * entry["n_gen_tokens"],  # placeholder
+                "n_deceptive": 0,
+                "deceptive_ratio": 0.0,
+            })
 
-    for i, entry in enumerate(responses_data):
-        # --- Sentence-level judge ---
-        judge_result = llm_judge_disclosure(
-            entry["ground_truth"], entry["phase_b_response"]
-        )
-        entry["disclosed_llm"] = judge_result["disclosed"]
-        entry["judge_confidence"] = judge_result["confidence"]
-        entry["judge_reasoning"] = judge_result["reasoning"]
+        n_lied = sum(1 for r in responses_data if r["label"] == "lied")
+        n_resisted = sum(1 for r in responses_data if r["label"] == "resisted")
+        log.info(f"  Keyword labels: {n_lied} lied, {n_resisted} resisted")
 
-        # Final sentence label: LLM judge overrides keyword
-        if judge_result["confidence"] != "error":
-            entry["label"] = "resisted" if judge_result["disclosed"] else "lied"
-        else:
-            entry["label"] = entry["label_keyword"]  # fallback
+    else:
+        log.info("\n" + "=" * 60)
+        log.info("PHASE C: LLM Judge Labeling")
+        log.info("  1. Sentence-level: disclosed or concealed?")
+        log.info("  2. Token-level: which tokens are deceptive?")
+        log.info("=" * 60)
 
-        # --- Token-level labeling (only for LIED samples) ---
-        token_label_entry = {
-            "sample_id": entry["sample_id"],
-            "label": entry["label"],
-            "n_tokens": entry["n_gen_tokens"],
-        }
+        token_labels_data = []
+        label_start = time.time()
 
-        if entry["label"] == "lied":
-            span_result = llm_label_deceptive_spans(
+        for i, entry in enumerate(responses_data):
+            # --- Sentence-level judge ---
+            judge_result = llm_judge_disclosure(
                 entry["ground_truth"], entry["phase_b_response"]
             )
-            entry["deception_summary"] = span_result.get("deception_summary", "")
-            entry["deceptive_spans"] = span_result.get("deceptive_spans", [])
+            entry["disclosed_llm"] = judge_result["disclosed"]
+            entry["judge_confidence"] = judge_result["confidence"]
+            entry["judge_reasoning"] = judge_result["reasoning"]
 
-            # Map spans to token labels
-            generated_ids_tensor = torch.tensor(entry["generated_token_ids"])
-            token_labels = map_spans_to_token_labels(
-                entry["phase_b_response"],
-                span_result.get("deceptive_spans", []),
-                tokenizer,
-                generated_ids_tensor,
-            )
-            token_label_entry["token_labels"] = token_labels.tolist()
-            token_label_entry["n_deceptive"] = int(token_labels.sum())
-            token_label_entry["deceptive_ratio"] = float(
-                token_labels.sum() / len(token_labels)
-            ) if len(token_labels) > 0 else 0.0
-        else:
-            # RESISTED: all tokens are neutral (label=0)
-            token_label_entry["token_labels"] = [0] * entry["n_gen_tokens"]
-            token_label_entry["n_deceptive"] = 0
-            token_label_entry["deceptive_ratio"] = 0.0
+            # Final sentence label: LLM judge overrides keyword
+            if judge_result["confidence"] != "error":
+                entry["label"] = "resisted" if judge_result["disclosed"] else "lied"
+            else:
+                entry["label"] = entry["label_keyword"]  # fallback
 
-        token_labels_data.append(token_label_entry)
+            # --- Token-level labeling (only for LIED samples) ---
+            token_label_entry = {
+                "sample_id": entry["sample_id"],
+                "label": entry["label"],
+                "n_tokens": entry["n_gen_tokens"],
+            }
 
-        if i < 5 or (i + 1) % 50 == 0 or i == len(responses_data) - 1:
-            elapsed = time.time() - label_start
-            rate = (i + 1) / elapsed * 60 if elapsed > 0 else 0
-            n_dec = token_label_entry["n_deceptive"]
-            log.info(
-                f"  [{i+1:4d}/{len(responses_data)}] {entry['label']:8s} | "
-                f"deceptive_tokens={n_dec:3d} | "
-                f"{entry['domain']:30s} | {rate:.0f}/min"
-            )
+            if entry["label"] == "lied":
+                span_result = llm_label_deceptive_spans(
+                    entry["ground_truth"], entry["phase_b_response"]
+                )
+                entry["deception_summary"] = span_result.get("deception_summary", "")
+                entry["deceptive_spans"] = span_result.get("deceptive_spans", [])
 
-    # Final label counts
-    n_lied = sum(1 for r in responses_data if r["label"] == "lied")
-    n_resisted = sum(1 for r in responses_data if r["label"] == "resisted")
-    log.info(f"\nFinal labels (LLM judge): {n_lied} lied, {n_resisted} resisted")
+                # Map spans to token labels
+                generated_ids_tensor = torch.tensor(entry["generated_token_ids"])
+                token_labels = map_spans_to_token_labels(
+                    entry["phase_b_response"],
+                    span_result.get("deceptive_spans", []),
+                    tokenizer,
+                    generated_ids_tensor,
+                )
+                token_label_entry["token_labels"] = token_labels.tolist()
+                token_label_entry["n_deceptive"] = int(token_labels.sum())
+                token_label_entry["deceptive_ratio"] = float(
+                    token_labels.sum() / len(token_labels)
+                ) if len(token_labels) > 0 else 0.0
+            else:
+                # RESISTED: all tokens are neutral (label=0)
+                token_label_entry["token_labels"] = [0] * entry["n_gen_tokens"]
+                token_label_entry["n_deceptive"] = 0
+                token_label_entry["deceptive_ratio"] = 0.0
 
-    # Label agreement
-    agree = sum(
-        1 for r in responses_data
-        if r["label"] == r["label_keyword"]
-    )
-    log.info(f"Keyword ↔ LLM agreement: {agree}/{len(responses_data)} "
-             f"({agree/len(responses_data)*100:.1f}%)")
+            token_labels_data.append(token_label_entry)
+
+            if i < 5 or (i + 1) % 50 == 0 or i == len(responses_data) - 1:
+                elapsed = time.time() - label_start
+                rate = (i + 1) / elapsed * 60 if elapsed > 0 else 0
+                n_dec = token_label_entry["n_deceptive"]
+                log.info(
+                    f"  [{i+1:4d}/{len(responses_data)}] {entry['label']:8s} | "
+                    f"deceptive_tokens={n_dec:3d} | "
+                    f"{entry['domain']:30s} | {rate:.0f}/min"
+                )
+
+        # Final label counts
+        n_lied = sum(1 for r in responses_data if r["label"] == "lied")
+        n_resisted = sum(1 for r in responses_data if r["label"] == "resisted")
+        log.info(f"\nFinal labels (LLM judge): {n_lied} lied, {n_resisted} resisted")
+
+        # Label agreement
+        agree = sum(
+            1 for r in responses_data
+            if r["label"] == r["label_keyword"]
+        )
+        log.info(f"Keyword ↔ LLM agreement: {agree}/{len(responses_data)} "
+                 f"({agree/len(responses_data)*100:.1f}%)")
 
     # ==================================================================
     # SAVE EVERYTHING
