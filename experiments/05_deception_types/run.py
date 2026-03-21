@@ -344,7 +344,7 @@ def main():
             results["cross_type"][f"{src_type}->{tgt_type}"] = float(acc)
             log.info(f"  {src_type}->{tgt_type}: {acc*100:.1f}%")
 
-    # Save
+    # Save JSON results
     output = {
         "experiment": "05_deception_types",
         "model": MODEL_NAME,
@@ -353,6 +353,36 @@ def main():
     }
     save_results(output, "results/exp05_deception_types.json")
     log.info("\nSaved to results/exp05_deception_types.json")
+
+    # Save raw vectors and lie directions for further analysis
+    vec_data = {}
+    for dtype in ["sycophancy", "instruction_conflict", "authority_pressure"]:
+        if dtype not in results["within_type"]:
+            continue
+        data = deception_types[dtype]
+        best_layer = results["within_type"][dtype]["best_layer"]
+        min_n = results["within_type"][dtype]["n_per_class"]
+        vec_data[f"{dtype}_lied"] = np.array([d["hs"][best_layer] for d in data["lied"][:min_n]])
+        vec_data[f"{dtype}_resisted"] = np.array([d["hs"][best_layer] for d in data["resisted"][:min_n]])
+
+    for dtype, direction in lie_directions.items():
+        vec_data[f"lie_dir_{dtype}"] = direction
+
+    vec_data["best_layers"] = np.array([
+        results["within_type"].get("sycophancy", {}).get("best_layer", -1),
+        results["within_type"].get("instruction_conflict", {}).get("best_layer", -1),
+        results["within_type"].get("authority_pressure", {}).get("best_layer", -1),
+    ])
+
+    np.savez_compressed("results/exp05_vectors.npz", **vec_data)
+    import os as _os
+    size_mb = _os.path.getsize("results/exp05_vectors.npz") / 1024 / 1024
+    log.info(f"Saved vectors to results/exp05_vectors.npz ({size_mb:.1f} MB)")
+    for k, v in vec_data.items():
+        if isinstance(v, np.ndarray):
+            log.info(f"  {k}: {v.shape}")
+
+    return deception_types, results, lie_directions
 
 
 if __name__ == "__main__":
